@@ -41,7 +41,7 @@
 - NL2SQL 화이트리스트/설명은 `backend/app/nl2sql/catalog.py`가 단일 소스 (현재 movies, books만 노출).
 
 ## 환경 변수
-- 백엔드: `backend/.env.example` 참고 (Oracle 접속정보, TMDB, 카카오도서, 네이버/알라딘/구글도서, LLM(Gemini/Claude), Kakao Map, FRONTEND_ORIGIN)
+- 백엔드: `backend/.env.example` 참고 (Oracle 접속정보, TMDB, 카카오도서, 네이버/알라딘/구글도서, Gemini, Kakao Map, FRONTEND_ORIGIN)
 - 프론트: `frontend/.env.local.example` 참고 (`NEXT_PUBLIC_API_BASE_URL`)
 
 ## 로컬 Oracle 실행 (Docker)

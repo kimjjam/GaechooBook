@@ -56,7 +56,7 @@
    JSON 파일 하나로 관리해서 팀원이 스키마 바뀔 때마다 한 곳만 수정하면
    되게 한다.
 7. **외부 API 클라이언트는 인터페이스로 추상화**: TMDB / 카카오도서 /
-   LLM(Gemini or Claude) / Kakao Map 클라이언트를 각각 별도 모듈로
+   LLM(Gemini) / Kakao Map 클라이언트를 각각 별도 모듈로
    분리해서 목(mock) 테스트가 가능하게 한다.
 8. **타입/스키마 우선**: Pydantic 모델로 API 요청/응답 스키마를 먼저
    정의하고 시작한다. 프론트의 TypeScript 타입도 이 스키마와 이름을
@@ -127,7 +127,7 @@
    - Oracle 접속정보 (host/port/service_name/user/password 등)
    - TMDB API 키
    - 카카오 도서 검색 API 키
-   - LLM API 키 (Gemini 또는 Claude — 팀 확정 전이면 둘 다 자리만 비워둠)
+   - Gemini API 키
    - Kakao Map API 키
 10. `PROJECT_SUMMARY.md` 작성 — 프로젝트 개요, 폴더 구조, DB 스키마
     요약, 최근 변경 이력 섹션을 포함한다. `CLAUDE_v3_Oracle팀과제.md`가

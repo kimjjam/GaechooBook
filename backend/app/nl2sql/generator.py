@@ -5,7 +5,7 @@
 """
 import re
 
-from app.api_clients.llm_client import get_llm_client
+from app.api_clients.llm_client import get_gemini_client
 from app.nl2sql.catalog import CATALOG
 
 _CODE_FENCE_RE = re.compile(r"```(?:sql)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
@@ -39,5 +39,5 @@ def _extract_sql(raw_response: str) -> str:
 
 def generate_sql(question: str) -> str:
     prompt = _build_prompt(question)
-    raw_response = get_llm_client().generate(prompt)
+    raw_response = get_gemini_client().generate(prompt)
     return _extract_sql(raw_response)

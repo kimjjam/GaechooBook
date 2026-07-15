@@ -114,7 +114,7 @@
 |---|---|
 | 영화 메타데이터 수집(초기 임포트용) | TMDB API |
 | 도서 메타데이터 수집(초기 임포트용) | 카카오 도서 검색 API |
-| 대화/선호추출/NL2SQL 생성 | Gemini Flash 또는 Claude API |
+| 대화/선호추출/NL2SQL 생성 | Gemini API |
 | 지도 표시 | Kakao Map API |
 
 ### 4.4 아키텍처 구조
