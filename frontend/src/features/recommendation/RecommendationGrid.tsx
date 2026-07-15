@@ -1,0 +1,101 @@
+"use client";
+
+import Image from "next/image";
+import { useState } from "react";
+
+import type { MovieRecommendation } from "@/features/chat/types";
+
+interface RecommendationGridProps {
+  movies: MovieRecommendation[];
+  isRefreshing: boolean;
+  onFeedback: (movie: MovieRecommendation, action: "liked" | "disliked") => Promise<void>;
+  onRefresh: () => Promise<void>;
+}
+
+export function RecommendationGrid({
+  movies,
+  isRefreshing,
+  onFeedback,
+  onRefresh,
+}: RecommendationGridProps) {
+  const [savingMovieId, setSavingMovieId] = useState<number | null>(null);
+
+  async function handleFeedback(movie: MovieRecommendation, action: "liked" | "disliked") {
+    setSavingMovieId(movie.id);
+    try {
+      await onFeedback(movie, action);
+    } finally {
+      setSavingMovieId(null);
+    }
+  }
+
+  return (
+    <section aria-labelledby="recommendation-title">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">오늘의 무드픽</p>
+          <h2 id="recommendation-title">취향에 맞춰 골랐어요</h2>
+        </div>
+        <button className="secondary-button" type="button" onClick={onRefresh} disabled={isRefreshing}>
+          {isRefreshing ? "찾는 중..." : "다시 추천"}
+        </button>
+      </div>
+
+      {movies.length === 0 ? (
+        <div className="empty-state">
+          <p>아직 보여드릴 새 영화가 없어요.</p>
+          <button className="secondary-button" type="button" onClick={onRefresh}>다시 찾아보기</button>
+        </div>
+      ) : (
+        <div className="movie-grid">
+          {movies.map((movie) => (
+            <article className="movie-card" key={movie.id}>
+              <div className="poster-wrap">
+                {movie.poster_url ? (
+                  <Image
+                    src={movie.poster_url}
+                    alt={`${movie.title} 포스터`}
+                    fill
+                    sizes="(max-width: 680px) 50vw, 220px"
+                    className="poster-image"
+                  />
+                ) : (
+                  <div className="poster-placeholder">MoodPick</div>
+                )}
+                <span className="rating">★ {movie.rating.toFixed(1)}</span>
+              </div>
+              <div className="movie-content">
+                <div>
+                  <h3>{movie.title}</h3>
+                  <p className="movie-meta">
+                    {movie.release_year ?? "연도 미상"} · {movie.genres.slice(0, 2).join(" · ")}
+                  </p>
+                </div>
+                <p className="recommendation-reason">{movie.reason}</p>
+                <p className="overview">{movie.overview || "한국어 줄거리 정보가 아직 없어요."}</p>
+                <div className="feedback-row" aria-label={`${movie.title} 평가`}>
+                  <button
+                    type="button"
+                    disabled={savingMovieId === movie.id}
+                    onClick={() => handleFeedback(movie, "liked")}
+                    aria-label={`${movie.title} 좋아요`}
+                  >
+                    👍 취향이에요
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingMovieId === movie.id}
+                    onClick={() => handleFeedback(movie, "disliked")}
+                    aria-label={`${movie.title} 싫어요`}
+                  >
+                    👎 다음엔 빼기
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}

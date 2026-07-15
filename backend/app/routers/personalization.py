@@ -1,0 +1,150 @@
+from fastapi import APIRouter, Header, HTTPException, Query, Request
+
+from app.api_clients.tmdb import TMDBClient
+from app.core.scoring.recommendation import rank_movies
+from app.core.security import session_cookie, verify_csrf
+from app.db.oracle_client import OracleConnectionError
+from app.repositories.personalization_repo import (
+    feedback_movie_ids,
+    get_or_create_user,
+    get_profile_for_user,
+    profile_preferences,
+    save_feedback,
+    save_onboarding,
+)
+from app.repositories.auth_repo import get_auth_context
+from app.schemas.personalization import (
+    FeedbackRequest,
+    FeedbackResponse,
+    MovieRecommendation,
+    OnboardingRequest,
+    ProfileResponse,
+    RecommendationResponse,
+)
+
+router = APIRouter(prefix="/personalization", tags=["personalization"])
+
+
+def _resolve_user(
+    http_request: Request,
+    visitor_token: str,
+    csrf_token: str | None = None,
+    require_csrf: bool = False,
+):
+    raw_token = session_cookie(http_request)
+    if raw_token:
+        context = get_auth_context(raw_token)
+        if context is None:
+            raise HTTPException(status_code=401, detail="로그인 세션이 만료되었습니다.")
+        if require_csrf:
+            verify_csrf(csrf_token, context.csrf_hash)
+        return context.user
+    return get_or_create_user(visitor_token)
+
+
+def _profile_response(visitor_token: str, user) -> ProfileResponse:
+    profile = get_profile_for_user(user.id)
+    if profile is None:
+        return ProfileResponse(visitor_token=visitor_token, onboarding_completed=False)
+    genres, moods = profile_preferences(profile)
+    return ProfileResponse(
+        visitor_token=visitor_token,
+        onboarding_completed=True,
+        favorite_genres=list(genres.keys()),
+        moods=list(moods.keys()),
+    )
+
+
+@router.get("/profile", response_model=ProfileResponse)
+def get_profile(
+    http_request: Request,
+    visitor_token: str = Header(alias="X-Visitor-Token"),
+) -> ProfileResponse:
+    if not 8 <= len(visitor_token) <= 64:
+        raise HTTPException(status_code=422, detail="잘못된 방문자 토큰입니다.")
+    try:
+        user = _resolve_user(http_request, visitor_token)
+        return _profile_response(visitor_token, user)
+    except OracleConnectionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/onboarding", response_model=ProfileResponse)
+def complete_onboarding(
+    request: OnboardingRequest,
+    http_request: Request,
+    x_csrf_token: str | None = Header(default=None),
+) -> ProfileResponse:
+    try:
+        user = _resolve_user(
+            http_request,
+            request.visitor_token,
+            x_csrf_token,
+            require_csrf=True,
+        )
+        save_onboarding(
+            user.id,
+            request.favorite_genres,
+            request.moods,
+            request.favorite_movie,
+        )
+        return _profile_response(request.visitor_token, user)
+    except OracleConnectionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/recommendations", response_model=RecommendationResponse)
+def get_recommendations(
+    http_request: Request,
+    visitor_token: str = Header(alias="X-Visitor-Token"),
+    limit: int = Query(default=8, ge=1, le=12),
+) -> RecommendationResponse:
+    try:
+        user = _resolve_user(http_request, visitor_token)
+        profile = get_profile_for_user(user.id)
+        if profile is None:
+            raise HTTPException(status_code=409, detail="먼저 취향 설정을 완료해 주세요.")
+        genres, moods = profile_preferences(profile)
+        candidates = TMDBClient().discover_for_genres(list(genres.keys()), count=40)
+        ranked = rank_movies(
+            candidates,
+            genres,
+            moods,
+            feedback_movie_ids(user.id),
+            limit,
+            confidence=float(profile.confidence_score or 0.45),
+        )
+        return RecommendationResponse(
+            recommendations=[MovieRecommendation(**movie) for movie in ranked]
+        )
+    except OracleConnectionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/feedback", response_model=FeedbackResponse)
+def record_feedback(
+    request: FeedbackRequest,
+    http_request: Request,
+    x_csrf_token: str | None = Header(default=None),
+) -> FeedbackResponse:
+    try:
+        user = _resolve_user(
+            http_request,
+            request.visitor_token,
+            x_csrf_token,
+            require_csrf=True,
+        )
+        if get_profile_for_user(user.id) is None:
+            raise HTTPException(status_code=409, detail="먼저 취향 설정을 완료해 주세요.")
+        save_feedback(
+            user.id,
+            request.movie_id,
+            request.movie_title,
+            request.genres,
+            request.action,
+        )
+        return FeedbackResponse(saved=True, message="다음 추천에 취향을 반영할게요.")
+    except OracleConnectionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

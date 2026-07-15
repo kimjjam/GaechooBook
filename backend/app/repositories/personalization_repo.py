@@ -1,0 +1,134 @@
+import json
+
+from sqlalchemy import func
+
+from app.db.models import Interaction, OnboardingSignal, User, UserTasteProfile
+from app.db.oracle_client import get_session
+
+
+def _loads(value: str | None) -> dict:
+    if not value:
+        return {}
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+
+
+def get_or_create_user(visitor_token: str) -> User:
+    with get_session() as session:
+        user = session.query(User).filter(User.visitor_token == visitor_token).first()
+        if user is None:
+            user = User(visitor_token=visitor_token)
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+        else:
+            user.last_seen_at = func.sysdate()
+            session.commit()
+            session.refresh(user)
+        return user
+
+
+def get_profile_for_user(user_id: int) -> UserTasteProfile | None:
+    with get_session() as session:
+        return (
+            session.query(UserTasteProfile)
+            .filter(UserTasteProfile.user_id == user_id)
+            .order_by(UserTasteProfile.updated_at.desc())
+            .first()
+        )
+
+
+def save_onboarding(
+    user_id: int,
+    favorite_genres: list[str],
+    moods: list[str],
+    favorite_movie: str | None,
+) -> UserTasteProfile:
+    genre_weights = {genre: 1.0 for genre in favorite_genres}
+    mood_weights = {mood: 1.0 for mood in moods}
+    raw_value = json.dumps(
+        {
+            "favorite_genres": favorite_genres,
+            "moods": moods,
+            "favorite_movie": favorite_movie,
+        },
+        ensure_ascii=False,
+    )
+
+    with get_session() as session:
+        profile = (
+            session.query(UserTasteProfile)
+            .filter(UserTasteProfile.user_id == user_id)
+            .order_by(UserTasteProfile.updated_at.desc())
+            .first()
+        )
+        if profile is None:
+            profile = UserTasteProfile(user_id=user_id)
+            session.add(profile)
+
+        profile.genre_weights = json.dumps(genre_weights, ensure_ascii=False)
+        profile.mood_weights = json.dumps(mood_weights, ensure_ascii=False)
+        profile.confidence_score = 0.45
+        profile.updated_at = func.sysdate()
+        session.add(
+            OnboardingSignal(user_id=user_id, source="fav_item", raw_value=raw_value)
+        )
+        session.commit()
+        session.refresh(profile)
+        return profile
+
+
+def profile_preferences(profile: UserTasteProfile) -> tuple[dict[str, float], dict[str, float]]:
+    return _loads(profile.genre_weights), _loads(profile.mood_weights)
+
+
+def save_feedback(
+    user_id: int,
+    movie_id: int,
+    movie_title: str,
+    genres: list[str],
+    action: str,
+) -> None:
+    with get_session() as session:
+        session.add(
+            Interaction(
+                user_id=user_id,
+                tmdb_movie_id=movie_id,
+                movie_title=movie_title,
+                movie_genres=",".join(genres),
+                action=action,
+            )
+        )
+
+        profile = (
+            session.query(UserTasteProfile)
+            .filter(UserTasteProfile.user_id == user_id)
+            .order_by(UserTasteProfile.updated_at.desc())
+            .first()
+        )
+        if profile is not None and action in {"liked", "disliked"}:
+            weights = _loads(profile.genre_weights)
+            delta = 0.2 if action == "liked" else -0.15
+            for genre in genres:
+                weights[genre] = round(max(0.0, min(2.0, float(weights.get(genre, 0.5)) + delta)), 3)
+            profile.genre_weights = json.dumps(weights, ensure_ascii=False)
+            current_confidence = float(profile.confidence_score or 0.45)
+            profile.confidence_score = min(0.95, current_confidence + 0.03)
+            profile.updated_at = func.sysdate()
+
+        session.commit()
+
+
+def feedback_movie_ids(user_id: int) -> set[int]:
+    with get_session() as session:
+        rows = (
+            session.query(Interaction.tmdb_movie_id)
+            .filter(
+                Interaction.user_id == user_id,
+                Interaction.tmdb_movie_id.isnot(None),
+            )
+            .all()
+        )
+        return {int(row[0]) for row in rows}
