@@ -97,7 +97,7 @@ def complete_onboarding(
 def get_recommendations(
     http_request: Request,
     visitor_token: str = Header(alias="X-Visitor-Token"),
-    limit: int = Query(default=8, ge=1, le=12),
+    limit: int = Query(default=10, ge=1, le=12),
 ) -> RecommendationResponse:
     try:
         user = _resolve_user(http_request, visitor_token)
@@ -105,7 +105,10 @@ def get_recommendations(
         if profile is None:
             raise HTTPException(status_code=409, detail="먼저 취향 설정을 완료해 주세요.")
         genres, moods = profile_preferences(profile)
-        candidates = TMDBClient().discover_for_genres(list(genres.keys()), count=40)
+        preferred_genres = [
+            genre for genre, weight in genres.items() if float(weight) > 0
+        ]
+        candidates = TMDBClient().discover_for_genres(preferred_genres, count=40)
         ranked = rank_movies(
             candidates,
             genres,

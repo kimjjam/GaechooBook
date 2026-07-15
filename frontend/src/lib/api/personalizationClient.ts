@@ -50,7 +50,7 @@ export async function getRecommendations(
   visitorToken: string,
 ): Promise<MovieRecommendation[]> {
   const result = await apiFetch<{ recommendations: MovieRecommendation[] }>(
-    "/personalization/recommendations",
+    "/personalization/recommendations?limit=10",
     { headers: { "X-Visitor-Token": visitorToken } },
   );
   return result.recommendations;

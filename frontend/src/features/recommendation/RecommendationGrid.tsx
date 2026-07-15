@@ -8,6 +8,8 @@ import type { MovieRecommendation } from "@/features/chat/types";
 interface RecommendationGridProps {
   movies: MovieRecommendation[];
   isRefreshing: boolean;
+  ratedCount: number;
+  ratingTarget: number;
   onFeedback: (movie: MovieRecommendation, action: "liked" | "disliked") => Promise<void>;
   onRefresh: () => Promise<void>;
 }
@@ -15,6 +17,8 @@ interface RecommendationGridProps {
 export function RecommendationGrid({
   movies,
   isRefreshing,
+  ratedCount,
+  ratingTarget,
   onFeedback,
   onRefresh,
 }: RecommendationGridProps) {
@@ -39,6 +43,17 @@ export function RecommendationGrid({
         <button className="secondary-button" type="button" onClick={onRefresh} disabled={isRefreshing}>
           {isRefreshing ? "찾는 중..." : "다시 추천"}
         </button>
+      </div>
+
+      <div className="rating-progress" aria-live="polite">
+        <div>
+          <strong>{ratedCount} / {ratingTarget}</strong>
+          <span>편 평가</span>
+        </div>
+        <div className="rating-progress-track" aria-hidden="true">
+          <span style={{ width: `${Math.min(100, (ratedCount / ratingTarget) * 100)}%` }} />
+        </div>
+        <p>{ratingTarget}편을 평가하면 대화 추천으로 자동 전환돼요.</p>
       </div>
 
       {movies.length === 0 ? (
@@ -76,7 +91,7 @@ export function RecommendationGrid({
                 <div className="feedback-row" aria-label={`${movie.title} 평가`}>
                   <button
                     type="button"
-                    disabled={savingMovieId === movie.id}
+                    disabled={savingMovieId !== null || isRefreshing}
                     onClick={() => handleFeedback(movie, "liked")}
                     aria-label={`${movie.title} 좋아요`}
                   >
@@ -84,7 +99,7 @@ export function RecommendationGrid({
                   </button>
                   <button
                     type="button"
-                    disabled={savingMovieId === movie.id}
+                    disabled={savingMovieId !== null || isRefreshing}
                     onClick={() => handleFeedback(movie, "disliked")}
                     aria-label={`${movie.title} 싫어요`}
                   >

@@ -16,6 +16,9 @@ import {
 import { getAuthSession, logout } from "@/lib/api/authClient";
 
 const VISITOR_TOKEN_KEY = "moodpick_visitor_token";
+const CARD_RATING_TARGET = 10;
+type ContentType = "movies" | "books";
+type MovieView = "cards" | "chat";
 
 function getVisitorToken(): string {
   const stored = localStorage.getItem(VISITOR_TOKEN_KEY);
@@ -29,8 +32,12 @@ export function MoodPickApp() {
   const [visitorToken, setVisitorToken] = useState("");
   const [profile, setProfile] = useState<TasteProfile | null>(null);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
+  const [contentType, setContentType] = useState<ContentType | null>(null);
   const [movies, setMovies] = useState<MovieRecommendation[]>([]);
+  const [movieView, setMovieView] = useState<MovieView>("cards");
+  const [ratedMovieCount, setRatedMovieCount] = useState(0);
   const [isBooting, setIsBooting] = useState(true);
+  const [isContentLoading, setIsContentLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isEditingTaste, setIsEditingTaste] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -41,18 +48,11 @@ export function MoodPickApp() {
     const token = getVisitorToken();
     setVisitorToken(token);
 
-    async function restoreVisitor() {
+    async function restoreSession() {
       try {
         const restoredSession = await getAuthSession();
         if (cancelled) return;
         setAuthSession(restoredSession);
-        const restoredProfile = await getProfile(token);
-        if (cancelled) return;
-        setProfile(restoredProfile);
-        if (restoredProfile.onboarding_completed) {
-          const recommendations = await getRecommendations(token);
-          if (!cancelled) setMovies(recommendations);
-        }
       } catch (caught) {
         if (!cancelled) setError(caught instanceof Error ? caught.message : "서비스를 불러오지 못했습니다.");
       } finally {
@@ -60,11 +60,47 @@ export function MoodPickApp() {
       }
     }
 
-    void restoreVisitor();
+    void restoreSession();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  async function loadMovieExperience() {
+    if (!visitorToken) return;
+    setIsContentLoading(true);
+    setError(null);
+    try {
+      const restoredProfile = await getProfile(visitorToken);
+      setProfile(restoredProfile);
+      setMovies(
+        restoredProfile.onboarding_completed
+          ? await getRecommendations(visitorToken)
+          : [],
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "영화 추천을 불러오지 못했습니다.");
+    } finally {
+      setIsContentLoading(false);
+    }
+  }
+
+  function handleContentSelect(selected: ContentType) {
+    setContentType(selected);
+    setError(null);
+    window.scrollTo({ top: 0 });
+    if (selected === "movies") {
+      setMovieView("cards");
+      setRatedMovieCount(0);
+      void loadMovieExperience();
+    }
+  }
+
+  function handleBackToPicker() {
+    setContentType(null);
+    setError(null);
+    window.scrollTo({ top: 0 });
+  }
 
   async function refreshRecommendations() {
     if (!visitorToken) return;
@@ -94,6 +130,8 @@ export function MoodPickApp() {
       }, authSession?.csrf_token);
       setProfile(savedProfile);
       setIsEditingTaste(false);
+      setMovieView("cards");
+      setRatedMovieCount(0);
       setMovies(await getRecommendations(visitorToken));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "취향을 저장하지 못했습니다.");
@@ -105,24 +143,37 @@ export function MoodPickApp() {
     setError(null);
     try {
       await sendFeedback(visitorToken, movie, action, authSession?.csrf_token);
-      setMovies((current) => current.filter((item) => item.id !== movie.id));
+      const nextCount = ratedMovieCount + 1;
+      setRatedMovieCount(nextCount);
+      if (nextCount >= CARD_RATING_TARGET) {
+        setMovieView("chat");
+        window.scrollTo({ top: 0 });
+      }
+      try {
+        setMovies(await getRecommendations(visitorToken));
+      } catch (caught) {
+        setError(caught instanceof Error ? `평가는 저장했지만 새 추천을 불러오지 못했습니다: ${caught.message}` : "평가는 저장했지만 새 추천을 불러오지 못했습니다.");
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "평가를 저장하지 못했습니다.");
     }
+  }
+
+  async function handleShowMovieCards() {
+    setMovieView("cards");
+    setRatedMovieCount(0);
+    window.scrollTo({ top: 0 });
+    await refreshRecommendations();
   }
 
   async function handleAuthenticated(session: AuthSession) {
     setAuthSession(session);
     setIsAuthOpen(false);
     setError(null);
-    const restoredProfile = await getProfile(visitorToken);
-    setProfile(restoredProfile);
-    setIsEditingTaste(false);
-    setMovies(
-      restoredProfile.onboarding_completed
-        ? await getRecommendations(visitorToken)
-        : [],
-    );
+    if (contentType === "movies") {
+      await loadMovieExperience();
+      setIsEditingTaste(false);
+    }
   }
 
   async function handleLogout() {
@@ -131,20 +182,14 @@ export function MoodPickApp() {
     try {
       await logout(authSession.csrf_token);
       setAuthSession(null);
-      const anonymousProfile = await getProfile(visitorToken);
-      setProfile(anonymousProfile);
-      setMovies(
-        anonymousProfile.onboarding_completed
-          ? await getRecommendations(visitorToken)
-          : [],
-      );
+      if (contentType === "movies") await loadMovieExperience();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "로그아웃하지 못했습니다.");
     }
   }
 
   if (isBooting) {
-    return <main className="app-shell"><div className="loading-card">저장된 취향을 확인하고 있어요…</div></main>;
+    return <main className="app-shell"><div className="loading-card">서비스를 준비하고 있어요…</div></main>;
   }
 
   const needsOnboarding = !profile?.onboarding_completed || isEditingTaste;
@@ -164,13 +209,6 @@ export function MoodPickApp() {
           </button>
         )}
       </nav>
-      <header className="hero">
-        <h1>오늘 마음에 맞는 영화,<br />취향을 기억해서 골라드려요.</h1>
-        <p>
-          영화 정보는 TMDB에서 새롭게, 나의 취향과 반응은 안전하게 기억합니다.
-          {!authSession && " 로그인하면 다른 기기에서도 이어볼 수 있어요."}
-        </p>
-      </header>
 
       {error && <div className="error-banner" role="alert">{error}</div>}
 
@@ -182,14 +220,61 @@ export function MoodPickApp() {
         />
       )}
 
-      {needsOnboarding ? (
+      {!contentType ? (
+        <section className="content-picker" aria-labelledby="content-picker-title">
+          <div className="picker-copy">
+            <p className="eyebrow">오늘의 추천</p>
+            <h1 id="content-picker-title">지금은 무엇을<br />만나고 싶나요?</h1>
+            <p>보고 싶은 이야기와 읽고 싶은 이야기 중 하나를 골라주세요.</p>
+          </div>
+          <div className="content-options">
+            <button className="content-option movie-option" type="button" onClick={() => handleContentSelect("movies")}>
+              <span className="option-number">01</span>
+              <span className="option-icon" aria-hidden="true">▶</span>
+              <span className="option-title">영화</span>
+              <span className="option-description">취향과 기분에 맞는 영화를 골라드려요.</span>
+              <span className="option-link">영화 추천 받기 <span aria-hidden="true">→</span></span>
+            </button>
+            <button className="content-option book-option" type="button" onClick={() => handleContentSelect("books")}>
+              <span className="option-number">02</span>
+              <span className="option-icon" aria-hidden="true">▤</span>
+              <span className="option-title">도서</span>
+              <span className="option-description">관심사와 지금의 마음에 맞는 책을 찾아드려요.</span>
+              <span className="option-link">도서 추천 받기 <span aria-hidden="true">→</span></span>
+            </button>
+          </div>
+        </section>
+      ) : contentType === "books" ? (
+        <>
+          <header className="hero content-hero">
+            <button className="back-button" type="button" onClick={handleBackToPicker}>← 영화 · 도서 다시 선택</button>
+            <h1>지금 마음에 맞는 책,<br />함께 찾아드릴게요.</h1>
+            <p>여러 도서 검색 결과를 한곳에서 비교해 추천합니다.</p>
+          </header>
+          <section className="book-recommendation-panel" aria-label="도서 추천 대화">
+            <ChatWindow sessionId={visitorToken} mode="books" />
+          </section>
+        </>
+      ) : isContentLoading ? (
+        <div className="loading-card content-loading">영화 취향을 불러오고 있어요…</div>
+      ) : (
+        <>
+          <header className="hero content-hero">
+            <button className="back-button" type="button" onClick={handleBackToPicker}>← 영화 · 도서 다시 선택</button>
+            <h1>오늘 마음에 맞는 영화,<br />취향을 기억해서 골라드려요.</h1>
+            <p>
+              영화 정보는 TMDB에서 새롭게, 나의 취향과 반응은 안전하게 기억합니다.
+              {!authSession && " 로그인하면 다른 기기에서도 이어볼 수 있어요."}
+            </p>
+          </header>
+          {needsOnboarding ? (
         <OnboardingForm
           initialGenres={profile?.favorite_genres}
           initialMoods={profile?.moods}
           onComplete={handleOnboarding}
         />
-      ) : (
-        <>
+          ) : (
+            <>
           <div className="taste-summary">
             <div>
               <span>기억 중인 취향</span>
@@ -197,16 +282,34 @@ export function MoodPickApp() {
             </div>
             <button type="button" onClick={() => setIsEditingTaste(true)}>취향 수정</button>
           </div>
-          <RecommendationGrid
-            movies={movies}
-            isRefreshing={isRefreshing}
-            onFeedback={handleFeedback}
-            onRefresh={refreshRecommendations}
-          />
-          <details className="chat-panel">
-            <summary>영화 데이터에 대해 더 물어보기</summary>
-            <ChatWindow sessionId={visitorToken} />
-          </details>
+          {movieView === "cards" ? (
+            <RecommendationGrid
+              movies={movies}
+              isRefreshing={isRefreshing}
+              ratedCount={ratedMovieCount}
+              ratingTarget={CARD_RATING_TARGET}
+              onFeedback={handleFeedback}
+              onRefresh={refreshRecommendations}
+            />
+          ) : (
+            <section className="movie-chat-experience" aria-labelledby="movie-chat-title">
+              <div className="section-heading movie-chat-heading">
+                <div>
+                  <p className="eyebrow">대화로 더 정확하게</p>
+                  <h2 id="movie-chat-title">이제 편하게 말씀해 주세요</h2>
+                  <p className="section-description">카드에서 배운 취향과 지금의 요청을 함께 반영해 추천할게요.</p>
+                </div>
+              </div>
+              <div className="movie-chat-window">
+                <ChatWindow sessionId={visitorToken} mode="movies" />
+              </div>
+              <button className="secondary-button card-return-button" type="button" onClick={() => void handleShowMovieCards()}>
+                영화 카드 다시 보기
+              </button>
+            </section>
+          )}
+            </>
+          )}
         </>
       )}
     </main>

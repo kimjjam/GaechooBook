@@ -17,6 +17,7 @@ from app.repositories.personalization_repo import (
     get_or_create_user,
     get_profile_for_user,
     profile_preferences,
+    save_conversation_genre_preference,
 )
 from app.repositories.auth_repo import get_auth_context
 from app.routers.classify import classify_utterance
@@ -98,20 +99,34 @@ def _handle_recommend(
             if profile is None:
                 return ChatResponse(intent=Intent.RECOMMEND, reply="먼저 위에서 취향 설정을 완료해 주세요.")
             genres, moods = profile_preferences(profile)
-            requested_genres = [genre] if genre else list(genres.keys())
-            candidates = TMDBClient().discover_for_genres(requested_genres, count=30)
+            learned_from_conversation = False
+            if genre:
+                genres[genre] = save_conversation_genre_preference(
+                    user.id,
+                    session_id,
+                    genre,
+                    message,
+                )
+                learned_from_conversation = True
+            requested_genres = [genre] if genre else [
+                name for name, weight in genres.items() if float(weight) > 0
+            ]
+            candidates = TMDBClient().discover_for_genres(requested_genres, count=40)
             movies = rank_movies(
                 candidates,
                 genres,
                 moods,
                 feedback_movie_ids(user.id),
-                limit=5,
+                limit=10,
                 confidence=float(profile.confidence_score or 0.45),
             )
             if not movies:
                 return ChatResponse(intent=Intent.RECOMMEND, reply="새로 추천할 영화를 찾지 못했어요.")
             lines = [f"- {movie['title']} ({movie['release_year']}, 평점 {movie['rating']:.1f})" for movie in movies]
-            data = {"movies": movies}
+            data = {
+                "movies": movies,
+                "learned_genre": genre if learned_from_conversation else None,
+            }
     except OracleConnectionError as exc:
         return ChatResponse(intent=Intent.RECOMMEND, reply=f"DB 연결에 실패해 추천을 가져오지 못했습니다: {exc}")
     except RuntimeError as exc:
@@ -123,6 +138,8 @@ def _handle_recommend(
             prefix += f"(현재 응답하지 않은 제공자: {', '.join(data['failed_providers'])})\n"
     else:
         prefix = "저장된 취향을 반영한 추천이에요.\n"
+        if data.get("learned_genre"):
+            prefix += f"오늘 찾은 {data['learned_genre']} 장르도 가벼운 취향 신호로 기억할게요.\n"
     reply = prefix + "\n".join(lines)
     return ChatResponse(intent=Intent.RECOMMEND, reply=reply, data=data)
 

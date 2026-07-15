@@ -44,6 +44,38 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .brand { color: var(--accent); font-size: 13px; font-weight: 900; letter-spacing: 0.22em; }
 .hero h1 { max-width: 760px; margin: 18px 0; font-size: clamp(36px, 6vw, 68px); line-height: 1.08; letter-spacing: -0.055em; }
 .hero p, .section-description { color: var(--muted); line-height: 1.7; }
+.content-hero { padding-top: 30px; }
+.back-button { padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
+.back-button:hover { color: var(--text); }
+
+.content-picker { padding: clamp(58px, 10vh, 108px) 0 40px; }
+.picker-copy { max-width: 720px; margin-bottom: 46px; }
+.picker-copy h1 { margin: 12px 0 20px; font-size: clamp(44px, 7vw, 76px); line-height: 1.02; letter-spacing: -0.06em; }
+.picker-copy > p:last-child { color: var(--muted); font-size: 17px; line-height: 1.7; }
+.content-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.content-option {
+  position: relative;
+  display: grid;
+  min-height: 340px;
+  padding: clamp(24px, 4vw, 38px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+.content-option:hover { transform: translateY(-4px); border-color: rgba(255, 255, 255, 0.24); }
+.movie-option:hover { background: linear-gradient(145deg, rgba(255, 99, 93, 0.18), var(--panel) 60%); }
+.book-option:hover { background: linear-gradient(145deg, rgba(107, 133, 255, 0.18), var(--panel) 60%); }
+.option-number { color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: 0.12em; }
+.option-icon { align-self: end; margin-top: 42px; color: var(--accent); font-size: 38px; line-height: 1; }
+.book-option .option-icon { color: #879cff; }
+.option-title { margin-top: 16px; font-size: clamp(34px, 5vw, 52px); font-weight: 850; letter-spacing: -0.05em; }
+.option-description { max-width: 350px; margin-top: 8px; color: var(--muted); line-height: 1.6; }
+.option-link { align-self: end; margin-top: 34px; font-size: 14px; font-weight: 800; }
+.option-link span { margin-left: 5px; }
 
 .loading-card, .error-banner, .empty-state {
   border: 1px solid var(--line);
@@ -52,6 +84,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   padding: 28px;
 }
 .loading-card { margin-top: 24vh; text-align: center; }
+.content-loading { margin-top: 12vh; }
 .error-banner { margin-bottom: 20px; border-color: rgba(255, 99, 93, 0.45); color: #ffaaa6; }
 
 .onboarding-card {
@@ -142,6 +175,12 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
 .taste-summary span { color: var(--muted); font-size: 12px; }
 .taste-summary button { border: 0; background: transparent; color: var(--accent); }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+.rating-progress { display: grid; grid-template-columns: auto minmax(120px, 1fr) auto; align-items: center; gap: 14px; margin: -6px 0 24px; color: var(--muted); font-size: 12px; }
+.rating-progress > div:first-child { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+.rating-progress strong { color: var(--text); font-size: 16px; }
+.rating-progress p { margin: 0; }
+.rating-progress-track { height: 5px; overflow: hidden; border-radius: 999px; background: var(--panel-soft); }
+.rating-progress-track span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 180ms ease; }
 .movie-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
 .movie-card { overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
 .poster-wrap { position: relative; aspect-ratio: 2 / 3; overflow: hidden; background: var(--panel-soft); }
@@ -165,6 +204,20 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
 .chat-panel .bg-gray-100 { background: var(--panel-soft); }
 .chat-panel .border { border-color: var(--line); }
 .chat-panel input { background: #101014; color: var(--text); }
+.book-recommendation-panel { min-height: 480px; padding: clamp(20px, 4vw, 34px); border: 1px solid var(--line); border-radius: 24px; background: var(--panel); }
+.book-recommendation-panel > div { min-height: 410px; }
+.chat-empty-state { display: grid; min-height: 290px; place-content: center; gap: 10px; color: var(--muted); text-align: center; }
+.chat-empty-state strong { color: var(--text); font-size: 22px; }
+.prompt-suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 18px; }
+.prompt-suggestions button { padding: 9px 13px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-soft); color: var(--text); font-size: 12px; }
+.prompt-suggestions button:hover { border-color: #879cff; }
+.chat-message { max-width: min(88%, 680px); white-space: pre-wrap; line-height: 1.6; }
+.movie-chat-experience { padding: clamp(24px, 4vw, 38px); border: 1px solid var(--line); border-radius: 24px; background: var(--panel); }
+.movie-chat-heading { margin-bottom: 22px; }
+.movie-chat-heading .section-description { margin-bottom: 0; }
+.movie-chat-window { min-height: 430px; }
+.movie-chat-window > div { min-height: 430px; }
+.card-return-button { display: block; margin: 18px auto 0; }
 
 @media (max-width: 900px) { .movie-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) {
@@ -180,4 +233,10 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
   .feedback-row { grid-template-columns: 1fr; }
   .section-heading { align-items: start; }
   .taste-summary { align-items: flex-start; }
+  .rating-progress { grid-template-columns: 1fr auto; }
+  .rating-progress-track { grid-column: 1 / -1; grid-row: 2; }
+  .rating-progress p { text-align: right; }
+  .content-picker { padding-top: 46px; }
+  .content-options { grid-template-columns: 1fr; }
+  .content-option { min-height: 280px; border-radius: 20px; }
 }

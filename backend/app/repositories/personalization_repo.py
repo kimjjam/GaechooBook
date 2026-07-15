@@ -2,7 +2,13 @@ import json
 
 from sqlalchemy import func
 
-from app.db.models import Interaction, OnboardingSignal, User, UserTasteProfile
+from app.db.models import (
+    ConversationSignal,
+    Interaction,
+    OnboardingSignal,
+    User,
+    UserTasteProfile,
+)
 from app.db.oracle_client import get_session
 
 
@@ -119,6 +125,47 @@ def save_feedback(
             profile.updated_at = func.sysdate()
 
         session.commit()
+
+
+def save_conversation_genre_preference(
+    user_id: int,
+    session_id: str,
+    genre: str,
+    raw_snippet: str,
+) -> float:
+    """대화에서 직접 요청한 장르를 약한 장기 취향 신호로 누적한다."""
+    with get_session() as session:
+        profile = (
+            session.query(UserTasteProfile)
+            .filter(UserTasteProfile.user_id == user_id)
+            .order_by(UserTasteProfile.updated_at.desc())
+            .first()
+        )
+        if profile is None:
+            return 0.0
+
+        weights = _loads(profile.genre_weights)
+        current_weight = float(weights.get(genre, 0.0))
+        updated_weight = round(min(2.0, current_weight + 0.12), 3)
+        weights[genre] = updated_weight
+        profile.genre_weights = json.dumps(weights, ensure_ascii=False)
+        profile.updated_at = func.sysdate()
+        session.add(
+            ConversationSignal(
+                session_id=session_id[:50],
+                extracted_preference=json.dumps(
+                    {
+                        "type": "movie_genre_request",
+                        "genre": genre,
+                        "weight_delta": 0.12,
+                    },
+                    ensure_ascii=False,
+                ),
+                raw_snippet=raw_snippet[:2000],
+            )
+        )
+        session.commit()
+        return updated_weight
 
 
 def feedback_movie_ids(user_id: int) -> set[int]:
