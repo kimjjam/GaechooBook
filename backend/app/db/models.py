@@ -26,7 +26,7 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, Identity(always=True), primary_key=True)
+    id = Column(Integer, Identity(always=False), primary_key=True)
     visitor_token = Column(String(64), nullable=True, unique=True)
     email = Column(String(320))
     password_hash = Column(String(512))
@@ -41,7 +41,7 @@ class User(Base):
 class AuthSession(Base):
     __tablename__ = "auth_sessions"
 
-    id = Column(Integer, Identity(always=True), primary_key=True)
+    id = Column(Integer, Identity(always=False), primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     token_hash = Column(String(64), nullable=False, unique=True)
     csrf_hash = Column(String(64), nullable=False)
@@ -53,7 +53,7 @@ class AuthSession(Base):
 class UserTasteProfile(Base):
     __tablename__ = "user_taste_profile"
 
-    id = Column(Integer, Identity(always=True), primary_key=True)
+    id = Column(Integer, Identity(always=False), primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     genre_weights = Column(Text)  # JSON 문자열
     mood_weights = Column(Text)  # JSON 문자열
@@ -68,7 +68,7 @@ class Item(Base):
     __tablename__ = "items"
     __table_args__ = (CheckConstraint("item_type IN ('movie','book')", name="ck_items_item_type"),)
 
-    id = Column(Integer, Identity(always=True), primary_key=True)
+    id = Column(Integer, Identity(always=False), primary_key=True)
     item_type = Column(String(10), nullable=False)
     title = Column(String(200))
     external_id = Column(String(50))
@@ -83,7 +83,7 @@ class Interaction(Base):
         CheckConstraint("action IN ('liked','disliked','skipped','watched')", name="ck_interactions_action"),
     )
 
-    id = Column(Integer, Identity(always=True), primary_key=True)
+    id = Column(Integer, Identity(always=False), primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     item_id = Column(Integer, ForeignKey("items.id"))
     tmdb_movie_id = Column(Integer)
@@ -100,7 +100,7 @@ class OnboardingSignal(Base):
         CheckConstraint("source IN ('fav_item','swipe','slider','quiz')", name="ck_onboarding_signals_source"),
     )
 
-    id = Column(Integer, Identity(always=True), primary_key=True)
+    id = Column(Integer, Identity(always=False), primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     source = Column(String(10), nullable=False)
     raw_value = Column(Text)  # JSON 문자열
@@ -110,7 +110,7 @@ class OnboardingSignal(Base):
 class ConversationSignal(Base):
     __tablename__ = "conversation_signals"
 
-    id = Column(Integer, Identity(always=True), primary_key=True)
+    id = Column(Integer, Identity(always=False), primary_key=True)
     session_id = Column(String(50))
     extracted_preference = Column(Text)  # JSON 문자열
     raw_snippet = Column(String(2000))
@@ -120,7 +120,7 @@ class ConversationSignal(Base):
 class Movie(Base):
     __tablename__ = "movies"
 
-    id = Column(Integer, Identity(always=True), primary_key=True)
+    id = Column(Integer, Identity(always=False), primary_key=True)
     title = Column(String(200))
     release_year = Column(Integer)
     genre = Column(String(100))
@@ -131,7 +131,7 @@ class Movie(Base):
 class Book(Base):
     __tablename__ = "books"
 
-    id = Column(Integer, Identity(always=True), primary_key=True)
+    id = Column(Integer, Identity(always=False), primary_key=True)
     title = Column(String(200))
     author = Column(String(100))
     genre = Column(String(100))
