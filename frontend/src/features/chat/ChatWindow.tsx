@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { ChatMovieCards } from "@/features/chat/ChatMovieCards";
 import { sendChatMessage } from "@/lib/api/chatClient";
-import type { ChatMessage } from "@/features/chat/types";
+import type { ChatMessage, MovieRecommendation } from "@/features/chat/types";
 
 interface ChatWindowProps {
   sessionId: string;
@@ -10,10 +11,19 @@ interface ChatWindowProps {
   initialAssistantMessage?: string;
 }
 
-const BOOK_SUGGESTIONS = [
-  "요즘 읽기 좋은 소설 추천해줘",
-  "마음이 편안해지는 에세이 추천해줘",
-  "몰입감 좋은 과학 도서 추천해줘",
+const BOOK_TASTE_QUESTIONS = [
+  {
+    prompt: "책 취향부터 천천히 알아볼게요. 평소 어떤 종류의 책을 가장 자주 읽나요?",
+    options: ["소설", "에세이", "인문·사회", "과학·기술"],
+  },
+  {
+    prompt: "좋아요. 요즘 가장 관심이 가거나 마음에 필요한 주제는 무엇인가요?",
+    options: ["마음의 위로", "새로운 지식", "관계와 사랑", "몰입과 재미"],
+  },
+  {
+    prompt: "마지막으로, 이번에는 어떤 느낌으로 읽고 싶나요?",
+    options: ["가볍고 편하게", "깊이 생각하며", "빠르게 몰입해서", "따뜻하게 쉬면서"],
+  },
 ];
 
 const MOVIE_SUGGESTIONS = [
@@ -27,11 +37,15 @@ export function ChatWindow({
   mode = "general",
   initialAssistantMessage,
 }: ChatWindowProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => (
-    initialAssistantMessage
-      ? [{ id: "initial-assistant-message", role: "assistant", text: initialAssistantMessage }]
-      : []
-  ));
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    const openingMessage = initialAssistantMessage
+      ?? (mode === "books" ? BOOK_TASTE_QUESTIONS[0].prompt : "");
+    return openingMessage
+      ? [{ id: "initial-assistant-message", role: "assistant", text: openingMessage }]
+      : [];
+  });
+  const [bookTasteStep, setBookTasteStep] = useState(0);
+  const [bookTasteAnswers, setBookTasteAnswers] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,19 +53,51 @@ export function ChatWindow({
   async function sendMessage(text: string) {
     if (!text || isLoading) return;
 
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", text }]);
+    const userMessage: ChatMessage = { id: crypto.randomUUID(), role: "user", text };
     setInput("");
-    setIsLoading(true);
     setError(null);
 
+    let requestText = text;
+    if (mode === "books" && bookTasteStep < BOOK_TASTE_QUESTIONS.length) {
+      const nextAnswers = [...bookTasteAnswers, text];
+      const nextStep = bookTasteStep + 1;
+      setBookTasteAnswers(nextAnswers);
+      setBookTasteStep(nextStep);
+
+      if (nextStep < BOOK_TASTE_QUESTIONS.length) {
+        setMessages((previous) => [
+          ...previous,
+          userMessage,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            text: BOOK_TASTE_QUESTIONS[nextStep].prompt,
+          },
+        ]);
+        return;
+      }
+      requestText = `도서 추천: ${nextAnswers[1]} ${nextAnswers[0]}`;
+    } else if (mode === "books" && !/(책|도서|소설|에세이|자기계발|인문학)/.test(text)) {
+      requestText = `도서 추천: ${text}`;
+    }
+
+    setMessages((previous) => [...previous, userMessage]);
+    setIsLoading(true);
+
     try {
-      const requestText = mode === "books" && !/(책|도서|소설|에세이|자기계발|인문학)/.test(text)
-        ? `도서 추천: ${text}`
-        : text;
       const response = await sendChatMessage(sessionId, requestText);
+      const movieData = response.data?.movies;
+      const responseMovies = Array.isArray(movieData)
+        ? movieData as MovieRecommendation[]
+        : undefined;
       setMessages((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), role: "assistant", text: response.reply },
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          text: response.reply,
+          movies: responseMovies,
+        },
       ]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다.");
@@ -68,24 +114,6 @@ export function ChatWindow({
   return (
     <div className="chat-window">
       <div className="chat-history" aria-live="polite">
-        {messages.length === 0 && mode === "books" && (
-          <div className="chat-empty-state">
-            <strong>어떤 책을 찾고 있나요?</strong>
-            <span>장르, 관심사 또는 지금 기분을 편하게 적어주세요.</span>
-            <div className="prompt-suggestions">
-              {BOOK_SUGGESTIONS.map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  onClick={() => void sendMessage(suggestion)}
-                  disabled={isLoading}
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
         {messages.length === 0 && mode === "movies" && (
           <div className="chat-empty-state">
             <strong>오늘은 어떤 영화가 끌리나요?</strong>
@@ -105,16 +133,27 @@ export function ChatWindow({
           </div>
         )}
         {messages.map((m) => (
-          <div
-            key={m.id}
-            className={`chat-row ${m.role}`}
-          >
-            {m.role === "assistant" && <span className="chat-avatar" aria-hidden="true">M</span>}
-            <span className="chat-bubble">
-              {m.text}
-            </span>
+          <div key={m.id} className={`chat-message-group ${m.role}`}>
+            <div className={`chat-row ${m.role}`}>
+              {m.role === "assistant" && <span className="chat-avatar" aria-hidden="true">M</span>}
+              <span className="chat-bubble">
+                {m.text}
+              </span>
+            </div>
+            {m.role === "assistant" && m.movies && m.movies.length > 0 && (
+              <ChatMovieCards movies={m.movies} />
+            )}
           </div>
         ))}
+        {mode === "books" && bookTasteStep < BOOK_TASTE_QUESTIONS.length && !isLoading && (
+          <div className="prompt-suggestions chat-quick-replies" aria-label="책 취향 빠른 답변">
+            {BOOK_TASTE_QUESTIONS[bookTasteStep].options.map((option) => (
+              <button key={option} type="button" onClick={() => void sendMessage(option)}>
+                {option}
+              </button>
+            ))}
+          </div>
+        )}
         {mode === "movies" && initialAssistantMessage && messages.length === 1 && (
           <div className="prompt-suggestions chat-quick-replies" aria-label="빠른 답변">
             {MOVIE_SUGGESTIONS.map((suggestion) => (

@@ -1,3 +1,4 @@
+import httpx
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 
 from app.api_clients.tmdb import TMDBClient
@@ -16,6 +17,7 @@ from app.repositories.auth_repo import get_auth_context
 from app.schemas.personalization import (
     FeedbackRequest,
     FeedbackResponse,
+    MovieDetailResponse,
     MovieRecommendation,
     OnboardingRequest,
     ProfileResponse,
@@ -98,6 +100,7 @@ def get_recommendations(
     http_request: Request,
     visitor_token: str = Header(alias="X-Visitor-Token"),
     limit: int = Query(default=10, ge=1, le=12),
+    exclude_movie_ids: str = Query(default="", max_length=500),
 ) -> RecommendationResponse:
     try:
         user = _resolve_user(http_request, visitor_token)
@@ -109,11 +112,16 @@ def get_recommendations(
             genre for genre, weight in genres.items() if float(weight) > 0
         ]
         candidates = TMDBClient().discover_for_genres(preferred_genres, count=40)
+        requested_exclusions = {
+            int(value)
+            for value in exclude_movie_ids.split(",")
+            if value.strip().isdigit()
+        }
         ranked = rank_movies(
             candidates,
             genres,
             moods,
-            feedback_movie_ids(user.id),
+            feedback_movie_ids(user.id) | requested_exclusions,
             limit,
             confidence=float(profile.confidence_score or 0.45),
         )
@@ -122,6 +130,19 @@ def get_recommendations(
         )
     except OracleConnectionError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/movies/{movie_id}", response_model=MovieDetailResponse)
+def get_movie_detail(movie_id: int) -> MovieDetailResponse:
+    try:
+        return MovieDetailResponse(**TMDBClient().get_movie_details(movie_id))
+    except httpx.HTTPStatusError as exc:
+        status_code = 404 if exc.response.status_code == 404 else 503
+        raise HTTPException(status_code=status_code, detail="영화 상세 정보를 불러오지 못했습니다.") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail="영화 상세 정보 제공자에 연결하지 못했습니다.") from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

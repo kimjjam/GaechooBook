@@ -228,6 +228,7 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
 .chat-row { display: flex; align-items: flex-end; gap: 8px; width: 100%; }
 .chat-row.user { justify-content: flex-end; }
 .chat-row.assistant { justify-content: flex-start; }
+.chat-message-group { display: grid; gap: 8px; width: 100%; }
 .chat-avatar { display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--panel-soft); color: var(--accent); font-size: 11px; font-weight: 900; }
 .chat-bubble { max-width: min(76%, 620px); padding: 11px 15px; white-space: pre-wrap; border-radius: 20px; color: var(--text); font-size: 14px; line-height: 1.55; }
 .chat-row.user .chat-bubble { border-bottom-right-radius: 6px; background: #3b82f6; color: #fff; }
@@ -251,6 +252,33 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
 .movie-chat-window { min-height: 430px; }
 .movie-chat-window > div { min-height: 430px; }
 .card-return-button { display: block; margin: 18px auto 0; }
+.chat-movie-cards { display: flex; gap: 10px; margin-left: 38px; padding: 2px 0 8px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: thin; }
+.chat-movie-card { width: 148px; min-width: 148px; padding: 0; overflow: hidden; scroll-snap-align: start; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--text); text-align: left; transition: transform 160ms ease, border-color 160ms ease; }
+.chat-movie-card:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.28); }
+.chat-movie-poster { position: relative; display: grid; aspect-ratio: 2 / 3; place-items: center; overflow: hidden; background: var(--panel-soft); color: var(--muted); font-size: 11px; font-weight: 900; letter-spacing: 0.08em; }
+.chat-movie-rating { position: absolute; right: 7px; bottom: 7px; padding: 4px 7px; border-radius: 999px; background: rgba(10, 10, 12, 0.88); color: var(--text); font-size: 10px; }
+.chat-movie-copy { display: grid; gap: 5px; padding: 11px; }
+.chat-movie-copy strong { overflow: hidden; font-size: 13px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.chat-movie-copy small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.chat-movie-copy em { display: -webkit-box; overflow: hidden; color: #ffaaa6; font-size: 10px; font-style: normal; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.movie-modal-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(0, 0, 0, 0.78); backdrop-filter: blur(8px); }
+.movie-modal { position: relative; width: min(920px, 94vw); max-height: 92vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 28px; background: var(--panel); box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55); }
+.movie-modal-close { position: absolute; z-index: 3; top: 14px; right: 14px; display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 50%; background: rgba(10, 10, 12, 0.72); color: var(--text); font-size: 27px; line-height: 1; }
+.movie-modal-loading { display: grid; min-height: 360px; place-items: center; padding: 40px; color: var(--muted); }
+.movie-modal-visual { position: relative; min-height: 330px; overflow: hidden; border-radius: 28px 28px 0 0; background: #101014; }
+.movie-modal-backdrop-image { object-fit: cover; }
+.movie-modal-visual-shade { position: absolute; inset: 0; background: linear-gradient(to top, var(--panel) 0%, rgba(21, 21, 25, 0.12) 72%); }
+.movie-modal-heading { position: absolute; right: 0; bottom: 0; left: 0; padding: clamp(24px, 5vw, 46px); }
+.movie-modal-heading span { display: inline-block; margin-bottom: 8px; color: #ffd36a; font-size: 13px; font-weight: 800; }
+.movie-modal-heading h2 { max-width: 720px; margin: 0; font-size: clamp(32px, 6vw, 58px); letter-spacing: -0.055em; }
+.movie-modal-heading p { margin: 10px 0 0; color: rgba(255, 255, 255, 0.76); }
+.movie-modal-body { display: grid; gap: 24px; padding: 0 clamp(24px, 5vw, 46px) clamp(28px, 5vw, 46px); }
+.movie-detail-meta { display: flex; flex-wrap: wrap; gap: 7px; }
+.movie-detail-meta span { padding: 7px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 11px; }
+.movie-detail-overview { margin: 0; color: var(--muted); line-height: 1.75; }
+.movie-trailer { aspect-ratio: 16 / 9; overflow: hidden; border-radius: 18px; background: #000; }
+.movie-trailer iframe { width: 100%; height: 100%; border: 0; }
+.movie-trailer-empty { margin: 0; padding: 28px; border-radius: 16px; background: #101014; color: var(--muted); text-align: center; }
 
 @media (max-width: 900px) { .movie-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) {
@@ -273,6 +301,10 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
   .chat-history { min-height: 360px; padding: 16px 12px; border-radius: 22px; }
   .chat-bubble { max-width: 84%; font-size: 13px; }
   .chat-avatar { width: 27px; height: 27px; flex-basis: 27px; }
+  .chat-movie-cards { margin-left: 35px; }
+  .movie-modal-backdrop { padding: 10px; }
+  .movie-modal { width: 100%; max-height: 95vh; border-radius: 22px; }
+  .movie-modal-visual { min-height: 270px; border-radius: 22px 22px 0 0; }
   .chat-composer { padding-left: 14px; }
   .content-picker { padding-top: 46px; }
   .content-options { grid-template-columns: 1fr; }

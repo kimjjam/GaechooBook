@@ -10,6 +10,7 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
+  movies?: MovieRecommendation[];
 }
 
 export interface TasteProfile {
@@ -29,6 +30,21 @@ export interface MovieRecommendation {
   genres: string[];
   score: number;
   reason: string;
+}
+
+export interface MovieDetail {
+  id: number;
+  title: string;
+  overview: string;
+  poster_url?: string | null;
+  backdrop_url?: string | null;
+  release_year?: number | null;
+  release_date?: string | null;
+  runtime?: number | null;
+  rating: number;
+  genres: string[];
+  tagline?: string | null;
+  trailer_url?: string | null;
 }
 
 export interface AuthSession {

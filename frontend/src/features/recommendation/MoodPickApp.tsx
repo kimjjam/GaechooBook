@@ -58,6 +58,7 @@ export function MoodPickApp() {
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [contentType, setContentType] = useState<ContentType | null>(null);
   const [movies, setMovies] = useState<MovieRecommendation[]>([]);
+  const [seenMovieIds, setSeenMovieIds] = useState<number[]>([]);
   const [movieView, setMovieView] = useState<MovieView>("cards");
   const [ratedMovieCount, setRatedMovieCount] = useState(0);
   const [genreSignals, setGenreSignals] = useState<GenreSignals>({});
@@ -68,6 +69,13 @@ export function MoodPickApp() {
   const [isEditingTaste, setIsEditingTaste] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function showMovies(nextMovies: MovieRecommendation[], resetSeen = false) {
+    setMovies(nextMovies);
+    setSeenMovieIds((previous) => [
+      ...new Set([...(resetSeen ? [] : previous), ...nextMovies.map((movie) => movie.id)]),
+    ]);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -99,11 +107,10 @@ export function MoodPickApp() {
     try {
       const restoredProfile = await getProfile(visitorToken);
       setProfile(restoredProfile);
-      setMovies(
-        restoredProfile.onboarding_completed
-          ? await getRecommendations(visitorToken)
-          : [],
-      );
+      const nextMovies = restoredProfile.onboarding_completed
+        ? await getRecommendations(visitorToken)
+        : [];
+      showMovies(nextMovies, true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "영화 추천을 불러오지 못했습니다.");
     } finally {
@@ -118,6 +125,7 @@ export function MoodPickApp() {
     if (selected === "movies") {
       setMovieView("cards");
       setRatedMovieCount(0);
+      setSeenMovieIds([]);
       setGenreSignals({});
       setMovieOpeningMessage("");
       void loadMovieExperience();
@@ -135,7 +143,11 @@ export function MoodPickApp() {
     setIsRefreshing(true);
     setError(null);
     try {
-      setMovies(await getRecommendations(visitorToken));
+      const nextMovies = await getRecommendations(visitorToken, seenMovieIds);
+      if (nextMovies.length === 0) {
+        throw new Error("새로 보여드릴 영화를 모두 살펴봤어요. 취향을 조금 바꾸거나 카드를 평가해 주세요.");
+      }
+      showMovies(nextMovies);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "추천을 불러오지 못했습니다.");
     } finally {
@@ -162,7 +174,7 @@ export function MoodPickApp() {
       setRatedMovieCount(0);
       setGenreSignals({});
       setMovieOpeningMessage("");
-      setMovies(await getRecommendations(visitorToken));
+      showMovies(await getRecommendations(visitorToken), true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "취향을 저장하지 못했습니다.");
       throw caught;
@@ -187,9 +199,13 @@ export function MoodPickApp() {
         );
         setMovieView("chat");
         window.scrollTo({ top: 0 });
+        return;
       }
       try {
-        setMovies(await getRecommendations(visitorToken));
+        const remainingMovies = movies.filter((candidate) => candidate.id !== movie.id);
+        const replacements = await getRecommendations(visitorToken, seenMovieIds);
+        const replacement = replacements[0];
+        showMovies(replacement ? [...remainingMovies, replacement] : remainingMovies);
       } catch (caught) {
         setError(caught instanceof Error ? `평가는 저장했지만 새 추천을 불러오지 못했습니다: ${caught.message}` : "평가는 저장했지만 새 추천을 불러오지 못했습니다.");
       }

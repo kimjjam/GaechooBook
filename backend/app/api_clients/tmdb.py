@@ -22,6 +22,7 @@ _GENRE_MAP = {
 }
 _GENRE_ID_BY_NAME = {name: genre_id for genre_id, name in _GENRE_MAP.items()}
 _POSTER_BASE_URL = "https://image.tmdb.org/t/p/w500"
+_BACKDROP_BASE_URL = "https://image.tmdb.org/t/p/w1280"
 
 _LANGUAGE_COUNTRY_MAP = {
     "ko": "한국", "en": "미국", "ja": "일본", "fr": "프랑스",
@@ -76,6 +77,39 @@ class TMDBClient:
         if count > 20 and first_page.get("total_pages", 1) > 1:
             results.extend(self._get("/discover/movie", {**params, "page": 2}).get("results", []))
         return [self._map_result(item) for item in results[:count]]
+
+    def get_movie_details(self, movie_id: int) -> dict:
+        """영화 상세 정보와 재생 가능한 공식 YouTube 예고편을 반환한다."""
+        item = self._get(
+            f"/movie/{movie_id}",
+            {
+                "append_to_response": "videos",
+                "include_video_language": "ko,en,null",
+            },
+        )
+        videos = (item.get("videos") or {}).get("results", [])
+        trailers = [
+            video
+            for video in videos
+            if video.get("site") == "YouTube" and video.get("type") == "Trailer"
+        ]
+        trailer = next((video for video in trailers if video.get("official")), None)
+        trailer = trailer or (trailers[0] if trailers else None)
+        release_date = item.get("release_date") or None
+        return {
+            "id": item["id"],
+            "title": item.get("title") or item.get("original_title") or "제목 미상",
+            "overview": item.get("overview") or "",
+            "poster_url": f"{_POSTER_BASE_URL}{item['poster_path']}" if item.get("poster_path") else None,
+            "backdrop_url": f"{_BACKDROP_BASE_URL}{item['backdrop_path']}" if item.get("backdrop_path") else None,
+            "release_year": int(release_date[:4]) if release_date and len(release_date) >= 4 else None,
+            "release_date": release_date,
+            "runtime": item.get("runtime"),
+            "rating": item.get("vote_average") or 0,
+            "genres": [genre["name"] for genre in item.get("genres", []) if genre.get("name")],
+            "tagline": item.get("tagline") or None,
+            "trailer_url": f"https://www.youtube.com/embed/{trailer['key']}" if trailer and trailer.get("key") else None,
+        }
 
     def get_popular_movies(self, count: int = 15) -> list[dict]:
         data = self._get("/discover/movie", {"sort_by": "popularity.desc", "page": 1})

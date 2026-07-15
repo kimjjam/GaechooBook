@@ -1,4 +1,5 @@
 import type {
+  MovieDetail,
   MovieRecommendation,
   TasteProfile,
 } from "@/features/chat/types";
@@ -48,12 +49,21 @@ export function saveOnboarding(input: OnboardingInput, csrfToken?: string): Prom
 
 export async function getRecommendations(
   visitorToken: string,
+  excludeMovieIds: number[] = [],
 ): Promise<MovieRecommendation[]> {
+  const params = new URLSearchParams({ limit: "10" });
+  if (excludeMovieIds.length > 0) {
+    params.set("exclude_movie_ids", excludeMovieIds.join(","));
+  }
   const result = await apiFetch<{ recommendations: MovieRecommendation[] }>(
-    "/personalization/recommendations?limit=10",
+    `/personalization/recommendations?${params.toString()}`,
     { headers: { "X-Visitor-Token": visitorToken } },
   );
   return result.recommendations;
+}
+
+export function getMovieDetail(movieId: number): Promise<MovieDetail> {
+  return apiFetch(`/personalization/movies/${movieId}`);
 }
 
 export function sendFeedback(

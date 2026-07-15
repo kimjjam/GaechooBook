@@ -51,7 +51,7 @@ def _extract_book_query(message: str, genre: str | None) -> str:
     query = message
     for phrase in _BOOK_QUERY_NOISE:
         query = query.replace(phrase, " ")
-    query = " ".join(query.split()).strip(" ?!.,")
+    query = " ".join(query.split()).strip(" :?!.,")
     return query if len(query) >= 2 else (genre or "베스트셀러")
 
 
@@ -122,7 +122,6 @@ def _handle_recommend(
             )
             if not movies:
                 return ChatResponse(intent=Intent.RECOMMEND, reply="새로 추천할 영화를 찾지 못했어요.")
-            lines = [f"- {movie['title']} ({movie['release_year']}, 평점 {movie['rating']:.1f})" for movie in movies]
             data = {
                 "movies": movies,
                 "learned_genre": genre if learned_from_conversation else None,
@@ -136,11 +135,11 @@ def _handle_recommend(
         prefix = f"'{book_query}' 통합 도서 검색 결과예요.\n"
         if data["failed_providers"]:
             prefix += f"(현재 응답하지 않은 제공자: {', '.join(data['failed_providers'])})\n"
+        reply = prefix + "\n".join(lines)
     else:
-        prefix = "저장된 취향을 반영한 추천이에요.\n"
+        reply = "저장된 취향을 반영해 추천 카드를 골라봤어요. 카드를 누르면 상세 정보와 예고편을 볼 수 있어요."
         if data.get("learned_genre"):
-            prefix += f"오늘 찾은 {data['learned_genre']} 장르도 가벼운 취향 신호로 기억할게요.\n"
-    reply = prefix + "\n".join(lines)
+            reply = f"오늘 찾은 {data['learned_genre']} 장르도 가벼운 취향 신호로 기억할게요.\n" + reply
     return ChatResponse(intent=Intent.RECOMMEND, reply=reply, data=data)
 
 

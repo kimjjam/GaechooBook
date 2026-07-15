@@ -29,6 +29,21 @@ class MovieRecommendation(BaseModel):
     reason: str
 
 
+class MovieDetailResponse(BaseModel):
+    id: int
+    title: str
+    overview: str = ""
+    poster_url: str | None = None
+    backdrop_url: str | None = None
+    release_year: int | None = None
+    release_date: str | None = None
+    runtime: int | None = None
+    rating: float = 0
+    genres: list[str] = Field(default_factory=list)
+    tagline: str | None = None
+    trailer_url: str | None = None
+
+
 class RecommendationResponse(BaseModel):
     recommendations: list[MovieRecommendation]
 
