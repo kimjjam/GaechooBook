@@ -57,8 +57,8 @@ export function ChatWindow({ sessionId, mode = "general" }: ChatWindowProps) {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-3">
-      <div className="flex-1 space-y-2 overflow-y-auto rounded border p-3">
+    <div className="chat-window">
+      <div className="chat-history" aria-live="polite">
         {messages.length === 0 && mode === "books" && (
           <div className="chat-empty-state">
             <strong>어떤 책을 찾고 있나요?</strong>
@@ -98,25 +98,26 @@ export function ChatWindow({ sessionId, mode = "general" }: ChatWindowProps) {
         {messages.map((m) => (
           <div
             key={m.id}
-            className={m.role === "user" ? "text-right" : "text-left"}
+            className={`chat-row ${m.role}`}
           >
-            <span
-              className={`chat-message ${
-                m.role === "user"
-                  ? "inline-block rounded bg-blue-500 px-3 py-1.5 text-white"
-                  : "inline-block rounded bg-gray-100 px-3 py-1.5"
-              }`}
-            >
+            {m.role === "assistant" && <span className="chat-avatar" aria-hidden="true">M</span>}
+            <span className="chat-bubble">
               {m.text}
             </span>
           </div>
         ))}
-        {isLoading && <p className="text-sm text-gray-400">응답 대기 중...</p>}
-        {error && <p className="text-sm text-red-500">{error}</p>}
+        {isLoading && (
+          <div className="chat-row assistant" aria-label="답변을 작성하고 있어요">
+            <span className="chat-avatar" aria-hidden="true">M</span>
+            <span className="chat-bubble typing-indicator" aria-hidden="true">
+              <i /><i /><i />
+            </span>
+          </div>
+        )}
+        {error && <p className="chat-error" role="alert">{error}</p>}
       </div>
-      <form onSubmit={handleSubmit} className="flex gap-2">
+      <form onSubmit={handleSubmit} className="chat-composer">
         <input
-          className="flex-1 rounded border px-3 py-2"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={
@@ -129,10 +130,13 @@ export function ChatWindow({ sessionId, mode = "general" }: ChatWindowProps) {
         />
         <button
           type="submit"
-          className="rounded bg-blue-500 px-4 py-2 text-white disabled:opacity-50"
-          disabled={isLoading}
+          className="chat-send-button"
+          disabled={isLoading || !input.trim()}
+          aria-label="메시지 보내기"
         >
-          전송
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 19V5m0 0-6 6m6-6 6 6" />
+          </svg>
         </button>
       </form>
     </div>
