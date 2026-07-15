@@ -3,6 +3,7 @@
 """
 from fastapi import APIRouter, HTTPException, Request
 
+from app.api_clients.book_search import search_books
 from app.api_clients.tmdb import TMDBClient
 from app.core.scoring.recommendation import rank_movies
 from app.core.security import session_cookie
@@ -11,7 +12,6 @@ from app.db.oracle_client import OracleConnectionError
 from app.nl2sql.executor import execute_query
 from app.nl2sql.generator import generate_sql
 from app.nl2sql.validator import SQLValidationError
-from app.repositories.catalog_query_repo import list_top_books
 from app.repositories.personalization_repo import (
     feedback_movie_ids,
     get_or_create_user,
@@ -31,7 +31,12 @@ _GENRE_KEYWORDS = [
     "판타지", "역사", "공포", "음악", "미스터리", "로맨스", "SF", "스릴러", "전쟁", "서부",
     "소설", "에세이", "자기계발", "인문학", "과학",
 ]
-_BOOK_KEYWORDS = ("책", "도서", "소설", "에세이")
+_BOOK_KEYWORDS = ("책", "도서", "소설", "에세이", "자기계발", "인문학")
+_BOOK_QUERY_NOISE = (
+    "추천해 줘", "추천해줘", "검색해 줘", "검색해줘", "찾아 줘", "찾아줘",
+    "보여 줘", "보여줘", "읽고 싶어", "읽고싶어", "읽을 만한", "읽을만한",
+    "추천", "검색", "책", "도서",
+)
 
 
 def _extract_genre_keyword(message: str) -> str | None:
@@ -39,6 +44,14 @@ def _extract_genre_keyword(message: str) -> str | None:
         if keyword in message:
             return keyword
     return None
+
+
+def _extract_book_query(message: str, genre: str | None) -> str:
+    query = message
+    for phrase in _BOOK_QUERY_NOISE:
+        query = query.replace(phrase, " ")
+    query = " ".join(query.split()).strip(" ?!.,")
+    return query if len(query) >= 2 else (genre or "베스트셀러")
 
 
 def _handle_recommend(
@@ -51,11 +64,34 @@ def _handle_recommend(
 
     try:
         if wants_books:
-            books = list_top_books(genre_keyword=genre, limit=5)
+            book_query = _extract_book_query(message, genre)
+            search_result = search_books(book_query, size_per_provider=5, limit=6)
+            books = search_result.books
             if not books:
-                return ChatResponse(intent=Intent.RECOMMEND, reply="조건에 맞는 도서를 찾지 못했어요.")
-            lines = [f"- {b.title} ({b.author}, {b.pub_year})" for b in books]
-            data = {"books": [{"title": b.title, "author": b.author, "pub_year": b.pub_year} for b in books]}
+                failed = ", ".join(search_result.failed_providers)
+                detail = f" 응답하지 않은 제공자: {failed}." if failed else ""
+                return ChatResponse(
+                    intent=Intent.RECOMMEND,
+                    reply=f"'{book_query}' 도서를 찾지 못했어요.{detail}",
+                    data={
+                        "query": book_query,
+                        "books": [],
+                        "providers": search_result.successful_providers,
+                        "failed_providers": search_result.failed_providers,
+                    },
+                )
+            lines = []
+            for book in books:
+                author = book.get("author") or "저자 미상"
+                year = f", {book['pub_year']}" if book.get("pub_year") else ""
+                sources = " · ".join(book.get("sources", []))
+                lines.append(f"- {book['title']} ({author}{year}) [{sources}]")
+            data = {
+                "query": book_query,
+                "books": books,
+                "providers": search_result.successful_providers,
+                "failed_providers": search_result.failed_providers,
+            }
         else:
             user = authenticated_user or get_or_create_user(session_id)
             profile = get_profile_for_user(user.id)
@@ -81,7 +117,12 @@ def _handle_recommend(
     except RuntimeError as exc:
         return ChatResponse(intent=Intent.RECOMMEND, reply=f"영화 정보를 가져오지 못했습니다: {exc}")
 
-    prefix = "이런 도서는 어때요?\n" if wants_books else "저장된 취향을 반영한 추천이에요.\n"
+    if wants_books:
+        prefix = f"'{book_query}' 통합 도서 검색 결과예요.\n"
+        if data["failed_providers"]:
+            prefix += f"(현재 응답하지 않은 제공자: {', '.join(data['failed_providers'])})\n"
+    else:
+        prefix = "저장된 취향을 반영한 추천이에요.\n"
     reply = prefix + "\n".join(lines)
     return ChatResponse(intent=Intent.RECOMMEND, reply=reply, data=data)
 

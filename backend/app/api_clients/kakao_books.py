@@ -20,6 +20,8 @@ class KakaoBooksClient:
         self.api_key = api_key or os.getenv("KAKAO_BOOKS_API_KEY", "")
 
     def search_book(self, query: str, size: int = 10) -> list[dict]:
+        if not self.api_key:
+            raise RuntimeError("카카오 도서 검색 API 키가 설정되지 않았습니다.")
         resp = httpx.get(
             _BASE_URL,
             params={"query": query, "size": size, "sort": "accuracy"},
@@ -37,8 +39,14 @@ class KakaoBooksClient:
                 {
                     "title": doc.get("title"),
                     "author": ", ".join(authors) if authors else None,
+                    "publisher": doc.get("publisher") or None,
                     "genre": query,
                     "pub_year": pub_year,
+                    "isbn": (doc.get("isbn") or "").split()[-1] or None,
+                    "thumbnail_url": doc.get("thumbnail") or None,
+                    "description": doc.get("contents") or None,
+                    "link": doc.get("url") or None,
+                    "source": "카카오",
                 }
             )
         return results
@@ -51,5 +59,12 @@ class KakaoBooksClient:
                 if not book["title"] or book["title"] in seen_titles:
                     continue
                 seen_titles.add(book["title"])
-                combined.append(book)
+                combined.append(
+                    {
+                        "title": book["title"],
+                        "author": book["author"],
+                        "genre": book["genre"],
+                        "pub_year": book["pub_year"],
+                    }
+                )
         return combined

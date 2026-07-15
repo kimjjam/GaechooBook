@@ -11,6 +11,8 @@ from app.schemas.chat import Intent
 _VISUALIZE_KEYWORDS = ("분포", "차트", "그래프", "지도")
 _NL2SQL_KEYWORDS = ("몇 개", "평점", "년도", "연도", "국가", "순위", "순으로")
 _RECOMMEND_KEYWORDS = ("추천", "보고싶", "보고 싶", "읽고싶", "읽고 싶")
+_BOOK_KEYWORDS = ("책", "도서", "소설", "에세이", "자기계발", "인문학")
+_BOOK_SEARCH_ACTIONS = ("검색", "찾아", "추천", "읽고")
 
 
 def classify_utterance(message: str) -> Intent:
@@ -18,6 +20,11 @@ def classify_utterance(message: str) -> Intent:
 
     if any(keyword in text for keyword in _VISUALIZE_KEYWORDS):
         return Intent.VISUALIZE
+    if (
+        any(keyword in text for keyword in _BOOK_KEYWORDS)
+        and any(keyword in text for keyword in _BOOK_SEARCH_ACTIONS)
+    ):
+        return Intent.RECOMMEND
     if any(keyword in text for keyword in _RECOMMEND_KEYWORDS):
         return Intent.RECOMMEND
     if any(keyword in text for keyword in _NL2SQL_KEYWORDS):

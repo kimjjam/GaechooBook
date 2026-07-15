@@ -25,3 +25,7 @@ def test_visualize_example_from_proposal():
 
 def test_chitchat_fallback():
     assert classify_utterance("안녕") == Intent.CHITCHAT
+
+
+def test_book_search_is_routed_to_recommendation():
+    assert classify_utterance("해리포터 책 검색해줘") == Intent.RECOMMEND
