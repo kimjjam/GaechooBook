@@ -224,6 +224,7 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
 .prompt-suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 18px; }
 .prompt-suggestions button { padding: 10px 15px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-soft); color: var(--text); font-size: 12px; transition: transform 150ms ease, border-color 150ms ease; }
 .prompt-suggestions button:hover { transform: translateY(-1px); border-color: rgba(255, 255, 255, 0.28); }
+.chat-quick-replies { justify-content: flex-start; margin: 4px 0 10px 38px; }
 .chat-row { display: flex; align-items: flex-end; gap: 8px; width: 100%; }
 .chat-row.user { justify-content: flex-end; }
 .chat-row.assistant { justify-content: flex-start; }

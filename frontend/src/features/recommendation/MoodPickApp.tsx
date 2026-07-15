@@ -19,6 +19,7 @@ const VISITOR_TOKEN_KEY = "moodpick_visitor_token";
 const CARD_RATING_TARGET = 10;
 type ContentType = "movies" | "books";
 type MovieView = "cards" | "chat";
+type GenreSignals = Record<string, number>;
 
 function getVisitorToken(): string {
   const stored = localStorage.getItem(VISITOR_TOKEN_KEY);
@@ -26,6 +27,29 @@ function getVisitorToken(): string {
   const token = crypto.randomUUID();
   localStorage.setItem(VISITOR_TOKEN_KEY, token);
   return token;
+}
+
+function joinGenres(genres: string[]): string {
+  return genres.length > 1 ? `${genres[0]}와 ${genres[1]}` : genres[0] ?? "새로운 장르";
+}
+
+function buildMovieOpeningMessage(
+  savedGenres: string[],
+  genreSignals: GenreSignals,
+): string {
+  const rankedSignals = Object.entries(genreSignals).sort((a, b) => b[1] - a[1]);
+  const likedGenres = rankedSignals.filter(([, score]) => score > 0).slice(0, 2).map(([genre]) => genre);
+  const lessPreferredGenre = rankedSignals.filter(([, score]) => score < 0).at(-1)?.[0];
+  const fallbackGenres = savedGenres.filter((genre) => genre !== lessPreferredGenre).slice(0, 2);
+  const highlightedGenres = likedGenres.length > 0 ? likedGenres : fallbackGenres;
+
+  if (highlightedGenres.length > 0 && lessPreferredGenre) {
+    return `방금 평가를 보니 ${joinGenres(highlightedGenres)} 쪽에 마음이 가고, ${lessPreferredGenre} 장르는 오늘 조금 덜 끌리셨네요. 지금은 어떤 분위기의 영화를 보고 싶으세요?`;
+  }
+  if (highlightedGenres.length > 0) {
+    return `10편의 평가를 보니 ${joinGenres(highlightedGenres)} 취향이 두드러져요. 지금은 가볍게 볼 작품과 깊이 몰입할 작품 중 어느 쪽이 끌리세요?`;
+  }
+  return "10편의 반응이 꽤 다양하네요. 오늘은 익숙한 취향과 새로운 장르 중 어느 쪽을 탐색해 볼까요?";
 }
 
 export function MoodPickApp() {
@@ -36,6 +60,8 @@ export function MoodPickApp() {
   const [movies, setMovies] = useState<MovieRecommendation[]>([]);
   const [movieView, setMovieView] = useState<MovieView>("cards");
   const [ratedMovieCount, setRatedMovieCount] = useState(0);
+  const [genreSignals, setGenreSignals] = useState<GenreSignals>({});
+  const [movieOpeningMessage, setMovieOpeningMessage] = useState("");
   const [isBooting, setIsBooting] = useState(true);
   const [isContentLoading, setIsContentLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -92,6 +118,8 @@ export function MoodPickApp() {
     if (selected === "movies") {
       setMovieView("cards");
       setRatedMovieCount(0);
+      setGenreSignals({});
+      setMovieOpeningMessage("");
       void loadMovieExperience();
     }
   }
@@ -132,6 +160,8 @@ export function MoodPickApp() {
       setIsEditingTaste(false);
       setMovieView("cards");
       setRatedMovieCount(0);
+      setGenreSignals({});
+      setMovieOpeningMessage("");
       setMovies(await getRecommendations(visitorToken));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "취향을 저장하지 못했습니다.");
@@ -144,8 +174,17 @@ export function MoodPickApp() {
     try {
       await sendFeedback(visitorToken, movie, action, authSession?.csrf_token);
       const nextCount = ratedMovieCount + 1;
+      const signalDelta = action === "liked" ? 1 : -1;
+      const nextGenreSignals = { ...genreSignals };
+      for (const genre of movie.genres) {
+        nextGenreSignals[genre] = (nextGenreSignals[genre] ?? 0) + signalDelta;
+      }
       setRatedMovieCount(nextCount);
+      setGenreSignals(nextGenreSignals);
       if (nextCount >= CARD_RATING_TARGET) {
+        setMovieOpeningMessage(
+          buildMovieOpeningMessage(profile?.favorite_genres ?? [], nextGenreSignals),
+        );
         setMovieView("chat");
         window.scrollTo({ top: 0 });
       }
@@ -162,6 +201,8 @@ export function MoodPickApp() {
   async function handleShowMovieCards() {
     setMovieView("cards");
     setRatedMovieCount(0);
+    setGenreSignals({});
+    setMovieOpeningMessage("");
     window.scrollTo({ top: 0 });
     await refreshRecommendations();
   }
@@ -301,7 +342,11 @@ export function MoodPickApp() {
                 </div>
               </div>
               <div className="movie-chat-window">
-                <ChatWindow sessionId={visitorToken} mode="movies" />
+                <ChatWindow
+                  sessionId={visitorToken}
+                  mode="movies"
+                  initialAssistantMessage={movieOpeningMessage}
+                />
               </div>
               <button className="secondary-button card-return-button" type="button" onClick={() => void handleShowMovieCards()}>
                 영화 카드 다시 보기

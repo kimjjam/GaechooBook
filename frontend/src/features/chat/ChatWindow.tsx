@@ -7,6 +7,7 @@ import type { ChatMessage } from "@/features/chat/types";
 interface ChatWindowProps {
   sessionId: string;
   mode?: "general" | "movies" | "books";
+  initialAssistantMessage?: string;
 }
 
 const BOOK_SUGGESTIONS = [
@@ -21,8 +22,16 @@ const MOVIE_SUGGESTIONS = [
   "몰입감 좋은 SF 영화 추천해줘",
 ];
 
-export function ChatWindow({ sessionId, mode = "general" }: ChatWindowProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+export function ChatWindow({
+  sessionId,
+  mode = "general",
+  initialAssistantMessage,
+}: ChatWindowProps) {
+  const [messages, setMessages] = useState<ChatMessage[]>(() => (
+    initialAssistantMessage
+      ? [{ id: "initial-assistant-message", role: "assistant", text: initialAssistantMessage }]
+      : []
+  ));
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -106,6 +115,20 @@ export function ChatWindow({ sessionId, mode = "general" }: ChatWindowProps) {
             </span>
           </div>
         ))}
+        {mode === "movies" && initialAssistantMessage && messages.length === 1 && (
+          <div className="prompt-suggestions chat-quick-replies" aria-label="빠른 답변">
+            {MOVIE_SUGGESTIONS.map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                onClick={() => void sendMessage(suggestion)}
+                disabled={isLoading}
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        )}
         {isLoading && (
           <div className="chat-row assistant" aria-label="답변을 작성하고 있어요">
             <span className="chat-avatar" aria-hidden="true">M</span>
