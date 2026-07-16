@@ -8,6 +8,7 @@ import hashlib
 import logging
 import os
 import random
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
@@ -17,6 +18,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 _BASE_URL = "https://api.themoviedb.org/3"
+_MAX_REQUEST_ATTEMPTS = 2
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 logger = logging.getLogger(__name__)
 
 # TMDB 공식 영화 장르표 (움직이지 않는 고정 목록이라 매 요청마다 조회하지 않고 상수로 둔다)
@@ -44,9 +47,24 @@ class TMDBClient:
         if not self.api_key:
             raise RuntimeError("TMDB_API_KEY가 설정되지 않았습니다.")
         params = {**params, "api_key": self.api_key, "language": "ko-KR"}
-        resp = httpx.get(f"{_BASE_URL}{path}", params=params, timeout=10)
-        resp.raise_for_status()
-        return resp.json()
+        for attempt in range(_MAX_REQUEST_ATTEMPTS):
+            try:
+                response = httpx.get(
+                    f"{_BASE_URL}{path}",
+                    params=params,
+                    timeout=httpx.Timeout(8, connect=5),
+                )
+                if (
+                    response.status_code not in _RETRYABLE_STATUS_CODES
+                    or attempt == _MAX_REQUEST_ATTEMPTS - 1
+                ):
+                    response.raise_for_status()
+                    return response.json()
+            except httpx.TransportError:
+                if attempt == _MAX_REQUEST_ATTEMPTS - 1:
+                    raise
+            time.sleep(0.2 * (attempt + 1))
+        raise RuntimeError("TMDB 요청 재시도 상태가 올바르지 않습니다.")
 
     def _map_result(self, item: dict) -> dict:
         release_date = item.get("release_date") or ""
@@ -124,7 +142,7 @@ class TMDBClient:
                             extra={
                                 "sort_by": params.get("sort_by"),
                                 "page": params.get("page"),
-                                "error": str(exc),
+                                "error_type": type(exc).__name__,
                             },
                         )
             if not responses and request_errors:
@@ -172,7 +190,9 @@ class TMDBClient:
                     for page in recent_pages
                 ),
             ]
-            collect(expanded_request_params)
+            for offset in range(0, len(expanded_request_params), 4):
+                if collect(expanded_request_params[offset : offset + 4]):
+                    break
         return [self._map_result(result) for result in unique_results]
 
     def recommend_similar(
