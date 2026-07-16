@@ -118,17 +118,21 @@ def test_tmdb_request_retries_once_after_read_timeout(monkeypatch):
     client = TMDBClient(api_key="test")
     calls = []
 
-    def fake_get(*_args, **_kwargs):
-        calls.append(None)
-        if len(calls) == 1:
-            raise httpx.ReadTimeout("TMDB timed out")
-        return httpx.Response(
-            200,
-            request=httpx.Request("GET", "https://api.themoviedb.org/3/discover/movie"),
-            json={"results": []},
-        )
+    class FakeHttpClient:
+        def get(self, *_args, **_kwargs):
+            calls.append(None)
+            if len(calls) == 1:
+                raise httpx.ReadTimeout("TMDB timed out")
+            return httpx.Response(
+                200,
+                request=httpx.Request("GET", "https://api.themoviedb.org/3/discover/movie"),
+                json={"results": []},
+            )
 
-    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(
+        "app.api_clients.tmdb._get_http_client",
+        lambda: FakeHttpClient(),
+    )
     monkeypatch.setattr("app.api_clients.tmdb.time.sleep", lambda _seconds: None)
 
     assert client._get("/discover/movie", {}) == {"results": []}

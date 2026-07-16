@@ -11,6 +11,7 @@ import random
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from threading import Lock
 
 import httpx
 from dotenv import load_dotenv
@@ -21,6 +22,24 @@ _BASE_URL = "https://api.themoviedb.org/3"
 _MAX_REQUEST_ATTEMPTS = 2
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 logger = logging.getLogger(__name__)
+_http_client: httpx.Client | None = None
+_http_client_lock = Lock()
+
+
+def _get_http_client() -> httpx.Client:
+    global _http_client
+    if _http_client is None:
+        with _http_client_lock:
+            if _http_client is None:
+                _http_client = httpx.Client(
+                    timeout=httpx.Timeout(8, connect=5),
+                    limits=httpx.Limits(
+                        max_connections=2,
+                        max_keepalive_connections=2,
+                        keepalive_expiry=30,
+                    ),
+                )
+    return _http_client
 
 # TMDB 공식 영화 장르표 (움직이지 않는 고정 목록이라 매 요청마다 조회하지 않고 상수로 둔다)
 _GENRE_MAP = {
@@ -49,10 +68,9 @@ class TMDBClient:
         params = {**params, "api_key": self.api_key, "language": "ko-KR"}
         for attempt in range(_MAX_REQUEST_ATTEMPTS):
             try:
-                response = httpx.get(
+                response = _get_http_client().get(
                     f"{_BASE_URL}{path}",
                     params=params,
-                    timeout=httpx.Timeout(8, connect=5),
                 )
                 if (
                     response.status_code not in _RETRYABLE_STATUS_CODES
