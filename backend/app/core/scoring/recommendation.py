@@ -25,10 +25,15 @@ def rank_movies(
             mood_genres.update(_MOOD_GENRES.get(mood, set()))
 
     ranked: list[dict] = []
+    seen_ids = set(excluded_ids)
     for movie in movies:
         movie_id = movie.get("id")
-        if movie_id is None or int(movie_id) in excluded_ids:
+        if movie_id is None:
             continue
+        normalized_id = int(movie_id)
+        if normalized_id in seen_ids:
+            continue
+        seen_ids.add(normalized_id)
 
         genres = set(movie.get("genres", []))
         matched = genres & preferred
