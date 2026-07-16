@@ -17,6 +17,7 @@ import type { FeedbackSelection } from "@/lib/api/personalizationClient";
 import { getAuthSession, logout } from "@/lib/api/authClient";
 
 const VISITOR_TOKEN_KEY = "moodpick_visitor_token";
+const SEEN_MOVIE_IDS_KEY_PREFIX = "moodpick_seen_movie_ids";
 const CARD_RATING_TARGET = 10;
 const VISIBLE_CARD_COUNT = 30;
 const RECOMMENDATION_BATCH_SIZE = 60;
@@ -44,6 +45,19 @@ function getVisitorToken(): string {
 
 function joinGenres(genres: string[]): string {
   return genres.length > 1 ? `${genres[0]}와 ${genres[1]}` : genres[0] ?? "새로운 장르";
+}
+
+function getStoredSeenMovieIds(visitorToken: string): number[] {
+  try {
+    const rawValue = localStorage.getItem(`${SEEN_MOVIE_IDS_KEY_PREFIX}:${visitorToken}`);
+    const parsed: unknown = rawValue ? JSON.parse(rawValue) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((value): value is number => Number.isInteger(value) && value > 0)
+      .slice(-MAX_TRACKED_MOVIE_IDS);
+  } catch {
+    return [];
+  }
 }
 
 function movieIdentity(movie: MovieRecommendation): string {
@@ -109,9 +123,9 @@ export function MoodPickApp() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function showMovieBatch(nextMovies: MovieRecommendation[], resetSeen = false) {
-    const knownIds = new Set(resetSeen ? [] : seenMovieIds);
-    const knownIdentities = new Set(resetSeen ? [] : seenMovieIdentities);
+  function showMovieBatch(nextMovies: MovieRecommendation[]) {
+    const knownIds = new Set(seenMovieIds);
+    const knownIdentities = new Set(seenMovieIdentities);
     const uniqueMovies = uniqueMovieBatch(nextMovies, knownIds, knownIdentities);
     setMovies(uniqueMovies.slice(0, VISIBLE_CARD_COUNT));
     setMoviePool(uniqueMovies.slice(VISIBLE_CARD_COUNT));
@@ -123,6 +137,7 @@ export function MoodPickApp() {
     let cancelled = false;
     const token = getVisitorToken();
     setVisitorToken(token);
+    setSeenMovieIds(getStoredSeenMovieIds(token));
 
     async function restoreSession() {
       try {
@@ -142,6 +157,14 @@ export function MoodPickApp() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!visitorToken) return;
+    localStorage.setItem(
+      `${SEEN_MOVIE_IDS_KEY_PREFIX}:${visitorToken}`,
+      JSON.stringify(seenMovieIds.slice(-MAX_TRACKED_MOVIE_IDS)),
+    );
+  }, [seenMovieIds, visitorToken]);
+
   async function loadMovieExperience() {
     if (!visitorToken) return;
     setIsContentLoading(true);
@@ -150,9 +173,9 @@ export function MoodPickApp() {
       const restoredProfile = await getProfile(visitorToken);
       setProfile(restoredProfile);
       const nextMovies = restoredProfile.onboarding_completed
-        ? await getRecommendations(visitorToken, [], RECOMMENDATION_BATCH_SIZE)
+        ? await getRecommendations(visitorToken, seenMovieIds, RECOMMENDATION_BATCH_SIZE)
         : [];
-      showMovieBatch(nextMovies, true);
+      showMovieBatch(nextMovies);
       if (restoredProfile.onboarding_completed) {
         setIsInitialCardRating(false);
         setIsMovieChatUnlocked(true);
@@ -181,8 +204,6 @@ export function MoodPickApp() {
       setIsInitialCardRating(false);
       setRatedMovieCount(0);
       setMoviePool([]);
-      setSeenMovieIds([]);
-      setSeenMovieIdentities([]);
       setPendingFeedback([]);
       setGenreSignals({});
       setMovieOpeningMessage("");
@@ -241,8 +262,7 @@ export function MoodPickApp() {
       setGenreSignals({});
       setMovieOpeningMessage("");
       showMovieBatch(
-        await getRecommendations(visitorToken, [], RECOMMENDATION_BATCH_SIZE),
-        true,
+        await getRecommendations(visitorToken, seenMovieIds, RECOMMENDATION_BATCH_SIZE),
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "취향을 저장하지 못했습니다.");
@@ -325,10 +345,31 @@ export function MoodPickApp() {
     }
   }
 
+  async function loadFreshCardsBeforeShowing() {
+    if (!visitorToken || isRefreshing) return;
+    setIsRefreshing(true);
+    setError(null);
+    try {
+      const nextMovies = await getRecommendations(
+        visitorToken,
+        seenMovieIds,
+        RECOMMENDATION_BATCH_SIZE,
+      );
+      if (nextMovies.length === 0) {
+        throw new Error("새로 보여드릴 영화를 모두 살펴봤어요. 취향을 조금 바꾸거나 카드를 평가해 주세요.");
+      }
+      showMovieBatch(nextMovies);
+      setMovieView("cards");
+      window.scrollTo({ top: 0 });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "추천을 불러오지 못했습니다.");
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
+
   async function handleShowMovieCards() {
-    setMovieView("cards");
-    window.scrollTo({ top: 0 });
-    await refreshRecommendations();
+    await loadFreshCardsBeforeShowing();
   }
 
   function handleReturnToMovieChat() {
@@ -503,8 +544,13 @@ export function MoodPickApp() {
                   onMoviesRecommended={handleChatMoviesRecommended}
                 />
               </div>
-              <button className="secondary-button card-return-button" type="button" onClick={() => void handleShowMovieCards()}>
-                영화 카드 다시 보기
+              <button
+                className="secondary-button card-return-button"
+                type="button"
+                onClick={() => void handleShowMovieCards()}
+                disabled={isRefreshing}
+              >
+                {isRefreshing ? "새 카드 찾는 중..." : "영화 카드 다시 보기"}
               </button>
             </section>
           )}
