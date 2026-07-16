@@ -31,13 +31,27 @@ function toggleValue(values: string[], value: string, maximum: number): string[]
   return [...values, value];
 }
 
+function normalizeValues(
+  values: string[],
+  choices: readonly string[],
+  maximum: number,
+): string[] {
+  return [...new Set(values)]
+    .filter((value) => choices.includes(value))
+    .slice(0, maximum);
+}
+
 export function OnboardingForm({
   initialGenres = [],
   initialMoods = [],
   onComplete,
 }: OnboardingFormProps) {
-  const [genres, setGenres] = useState<string[]>(initialGenres);
-  const [moods, setMoods] = useState<string[]>(initialMoods);
+  const [genres, setGenres] = useState<string[]>(() =>
+    normalizeValues(initialGenres, GENRES, 5),
+  );
+  const [moods, setMoods] = useState<string[]>(() =>
+    normalizeValues(initialMoods, MOODS, 3),
+  );
   const [favoriteMovie, setFavoriteMovie] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
