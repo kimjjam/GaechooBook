@@ -48,14 +48,27 @@ class RecommendationResponse(BaseModel):
     recommendations: list[MovieRecommendation]
 
 
-class FeedbackRequest(BaseModel):
-    visitor_token: str = Field(min_length=8, max_length=64)
+class FeedbackItem(BaseModel):
     movie_id: int
     movie_title: str = Field(max_length=200)
     genres: list[str] = Field(default_factory=list, max_length=10)
     action: Literal["liked", "disliked", "skipped", "watched"]
 
 
+class FeedbackRequest(FeedbackItem):
+    visitor_token: str = Field(min_length=8, max_length=64)
+
+
+class FeedbackBatchRequest(BaseModel):
+    visitor_token: str = Field(min_length=8, max_length=64)
+    feedback: list[FeedbackItem] = Field(min_length=1, max_length=5)
+
+
 class FeedbackResponse(BaseModel):
     saved: bool
+    message: str
+
+
+class FeedbackBatchResponse(BaseModel):
+    saved_count: int
     message: str

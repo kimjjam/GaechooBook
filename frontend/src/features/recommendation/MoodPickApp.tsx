@@ -11,12 +11,16 @@ import {
   getProfile,
   getRecommendations,
   saveOnboarding,
-  sendFeedback,
+  sendFeedbackBatch,
 } from "@/lib/api/personalizationClient";
+import type { FeedbackSelection } from "@/lib/api/personalizationClient";
 import { getAuthSession, logout } from "@/lib/api/authClient";
 
 const VISITOR_TOKEN_KEY = "moodpick_visitor_token";
 const CARD_RATING_TARGET = 10;
+const VISIBLE_CARD_COUNT = 10;
+const RECOMMENDATION_BATCH_SIZE = 30;
+const FEEDBACK_BATCH_SIZE = 5;
 const VISITOR_TOKEN_MIN_LENGTH = 8;
 const VISITOR_TOKEN_MAX_LENGTH = 64;
 type ContentType = "movies" | "books";
@@ -39,6 +43,27 @@ function getVisitorToken(): string {
 
 function joinGenres(genres: string[]): string {
   return genres.length > 1 ? `${genres[0]}와 ${genres[1]}` : genres[0] ?? "새로운 장르";
+}
+
+function movieIdentity(movie: MovieRecommendation): string {
+  const posterUrl = movie.poster_url?.trim();
+  if (posterUrl) return `poster:${posterUrl}`;
+  const normalizedTitle = movie.title.trim().toLocaleLowerCase("ko-KR").replace(/\s+/g, " ");
+  return `title-year:${normalizedTitle}:${movie.release_year ?? ""}`;
+}
+
+function uniqueMovieBatch(
+  nextMovies: MovieRecommendation[],
+  existingIds: Set<number>,
+  existingIdentities: Set<string>,
+): MovieRecommendation[] {
+  return nextMovies.filter((movie) => {
+    const identity = movieIdentity(movie);
+    if (existingIds.has(movie.id) || existingIdentities.has(identity)) return false;
+    existingIds.add(movie.id);
+    existingIdentities.add(identity);
+    return true;
+  });
 }
 
 function buildMovieOpeningMessage(
@@ -66,7 +91,10 @@ export function MoodPickApp() {
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [contentType, setContentType] = useState<ContentType | null>(null);
   const [movies, setMovies] = useState<MovieRecommendation[]>([]);
+  const [moviePool, setMoviePool] = useState<MovieRecommendation[]>([]);
   const [seenMovieIds, setSeenMovieIds] = useState<number[]>([]);
+  const [seenMovieIdentities, setSeenMovieIdentities] = useState<string[]>([]);
+  const [pendingFeedback, setPendingFeedback] = useState<FeedbackSelection[]>([]);
   const [movieView, setMovieView] = useState<MovieView>("cards");
   const [ratedMovieCount, setRatedMovieCount] = useState(0);
   const [genreSignals, setGenreSignals] = useState<GenreSignals>({});
@@ -78,11 +106,23 @@ export function MoodPickApp() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function showMovies(nextMovies: MovieRecommendation[], resetSeen = false) {
-    setMovies(nextMovies);
-    setSeenMovieIds((previous) => [
-      ...new Set([...(resetSeen ? [] : previous), ...nextMovies.map((movie) => movie.id)]),
-    ]);
+  function showMovieBatch(nextMovies: MovieRecommendation[], resetSeen = false) {
+    const knownIds = new Set(resetSeen ? [] : seenMovieIds);
+    const knownIdentities = new Set(resetSeen ? [] : seenMovieIdentities);
+    const uniqueMovies = uniqueMovieBatch(nextMovies, knownIds, knownIdentities);
+    setMovies(uniqueMovies.slice(0, VISIBLE_CARD_COUNT));
+    setMoviePool(uniqueMovies.slice(VISIBLE_CARD_COUNT));
+    setSeenMovieIds([...knownIds]);
+    setSeenMovieIdentities([...knownIdentities]);
+  }
+
+  function addMoviesToPool(nextMovies: MovieRecommendation[]) {
+    const knownIds = new Set(seenMovieIds);
+    const knownIdentities = new Set(seenMovieIdentities);
+    const additions = uniqueMovieBatch(nextMovies, knownIds, knownIdentities);
+    setMoviePool((currentPool) => [...currentPool, ...additions]);
+    setSeenMovieIds([...knownIds]);
+    setSeenMovieIdentities([...knownIdentities]);
   }
 
   useEffect(() => {
@@ -116,9 +156,9 @@ export function MoodPickApp() {
       const restoredProfile = await getProfile(visitorToken);
       setProfile(restoredProfile);
       const nextMovies = restoredProfile.onboarding_completed
-        ? await getRecommendations(visitorToken)
+        ? await getRecommendations(visitorToken, [], RECOMMENDATION_BATCH_SIZE)
         : [];
-      showMovies(nextMovies, true);
+      showMovieBatch(nextMovies, true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "영화 추천을 불러오지 못했습니다.");
     } finally {
@@ -133,7 +173,10 @@ export function MoodPickApp() {
     if (selected === "movies") {
       setMovieView("cards");
       setRatedMovieCount(0);
+      setMoviePool([]);
       setSeenMovieIds([]);
+      setSeenMovieIdentities([]);
+      setPendingFeedback([]);
       setGenreSignals({});
       setMovieOpeningMessage("");
       void loadMovieExperience();
@@ -151,11 +194,15 @@ export function MoodPickApp() {
     setIsRefreshing(true);
     setError(null);
     try {
-      const nextMovies = await getRecommendations(visitorToken, seenMovieIds);
+      const nextMovies = await getRecommendations(
+        visitorToken,
+        seenMovieIds,
+        RECOMMENDATION_BATCH_SIZE,
+      );
       if (nextMovies.length === 0) {
         throw new Error("새로 보여드릴 영화를 모두 살펴봤어요. 취향을 조금 바꾸거나 카드를 평가해 주세요.");
       }
-      showMovies(nextMovies);
+      showMovieBatch(nextMovies);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "추천을 불러오지 못했습니다.");
     } finally {
@@ -180,9 +227,13 @@ export function MoodPickApp() {
       setIsEditingTaste(false);
       setMovieView("cards");
       setRatedMovieCount(0);
+      setPendingFeedback([]);
       setGenreSignals({});
       setMovieOpeningMessage("");
-      showMovies(await getRecommendations(visitorToken), true);
+      showMovieBatch(
+        await getRecommendations(visitorToken, [], RECOMMENDATION_BATCH_SIZE),
+        true,
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "취향을 저장하지 못했습니다.");
       throw caught;
@@ -191,34 +242,48 @@ export function MoodPickApp() {
 
   async function handleFeedback(movie: MovieRecommendation, action: "liked" | "disliked") {
     setError(null);
-    try {
-      await sendFeedback(visitorToken, movie, action, authSession?.csrf_token);
-      const nextCount = ratedMovieCount + 1;
-      const signalDelta = action === "liked" ? 1 : -1;
-      const nextGenreSignals = { ...genreSignals };
-      for (const genre of movie.genres) {
-        nextGenreSignals[genre] = (nextGenreSignals[genre] ?? 0) + signalDelta;
-      }
-      setRatedMovieCount(nextCount);
-      setGenreSignals(nextGenreSignals);
-      if (nextCount >= CARD_RATING_TARGET) {
-        setMovieOpeningMessage(
-          buildMovieOpeningMessage(profile?.favorite_genres ?? [], nextGenreSignals),
-        );
-        setMovieView("chat");
-        window.scrollTo({ top: 0 });
+    const nextCount = ratedMovieCount + 1;
+    const nextPendingFeedback = [...pendingFeedback, { movie, action }];
+    const signalDelta = action === "liked" ? 1 : -1;
+    const nextGenreSignals = { ...genreSignals };
+    for (const genre of movie.genres) {
+      nextGenreSignals[genre] = (nextGenreSignals[genre] ?? 0) + signalDelta;
+    }
+
+    const remainingMovies = movies.filter((candidate) => candidate.id !== movie.id);
+    const [replacement, ...remainingPool] = moviePool;
+    setMovies(replacement ? [...remainingMovies, replacement] : remainingMovies);
+    setMoviePool(remainingPool);
+    setPendingFeedback(nextPendingFeedback);
+    setRatedMovieCount(nextCount);
+    setGenreSignals(nextGenreSignals);
+
+    if (nextPendingFeedback.length >= FEEDBACK_BATCH_SIZE) {
+      const feedbackBatch = nextPendingFeedback.slice(0, FEEDBACK_BATCH_SIZE);
+      try {
+        await sendFeedbackBatch(visitorToken, feedbackBatch, authSession?.csrf_token);
+        setPendingFeedback(nextPendingFeedback.slice(FEEDBACK_BATCH_SIZE));
+
+        if (nextCount < CARD_RATING_TARGET) {
+          const nextMovies = await getRecommendations(
+            visitorToken,
+            seenMovieIds,
+            RECOMMENDATION_BATCH_SIZE,
+          );
+          addMoviesToPool(nextMovies);
+        }
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "평가 묶음을 저장하지 못했습니다.");
         return;
       }
-      try {
-        const remainingMovies = movies.filter((candidate) => candidate.id !== movie.id);
-        const replacements = await getRecommendations(visitorToken, seenMovieIds);
-        const replacement = replacements[0];
-        showMovies(replacement ? [...remainingMovies, replacement] : remainingMovies);
-      } catch (caught) {
-        setError(caught instanceof Error ? `평가는 저장했지만 새 추천을 불러오지 못했습니다: ${caught.message}` : "평가는 저장했지만 새 추천을 불러오지 못했습니다.");
-      }
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "평가를 저장하지 못했습니다.");
+    }
+
+    if (nextCount >= CARD_RATING_TARGET) {
+      setMovieOpeningMessage(
+        buildMovieOpeningMessage(profile?.favorite_genres ?? [], nextGenreSignals),
+      );
+      setMovieView("chat");
+      window.scrollTo({ top: 0 });
     }
   }
 

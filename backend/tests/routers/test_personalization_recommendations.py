@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from app.routers import personalization
+from app.schemas.personalization import FeedbackBatchRequest
 
 
 def _movie(movie_id: int) -> dict:
@@ -40,3 +41,40 @@ def test_recommendations_exclude_ids_requested_by_client(monkeypatch):
     )
 
     assert [movie.id for movie in response.recommendations] == [3]
+
+
+def test_feedback_batch_is_saved_in_one_repository_call(monkeypatch):
+    user = SimpleNamespace(id=7)
+    captured = {}
+    monkeypatch.setattr(personalization, "_resolve_user", lambda *_args, **_kwargs: user)
+    monkeypatch.setattr(
+        personalization,
+        "get_profile_for_user",
+        lambda _user_id: SimpleNamespace(id=1),
+    )
+    monkeypatch.setattr(
+        personalization,
+        "save_feedback_batch",
+        lambda user_id, feedback: captured.update(user_id=user_id, feedback=feedback),
+    )
+
+    response = personalization.record_feedback_batch(
+        request=FeedbackBatchRequest(
+            visitor_token="visitor-123",
+            feedback=[
+                {
+                    "movie_id": movie_id,
+                    "movie_title": f"영화 {movie_id}",
+                    "genres": ["액션"],
+                    "action": "liked" if movie_id % 2 else "disliked",
+                }
+                for movie_id in range(1, 6)
+            ],
+        ),
+        http_request=object(),
+        x_csrf_token=None,
+    )
+
+    assert response.saved_count == 5
+    assert captured["user_id"] == 7
+    assert [item["movie_id"] for item in captured["feedback"]] == [1, 2, 3, 4, 5]

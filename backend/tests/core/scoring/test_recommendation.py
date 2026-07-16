@@ -25,3 +25,28 @@ def test_duplicate_movie_ids_are_returned_once():
     ranked = rank_movies(movies, {"액션": 1.0}, {}, set(), limit=10)
 
     assert [movie["id"] for movie in ranked] == [1, 2]
+
+
+def test_same_movie_with_different_ids_and_same_poster_is_returned_once():
+    movies = [
+        {
+            "id": 10,
+            "title": "벽동",
+            "poster_url": "https://image.tmdb.org/t/p/w500/wall.jpg",
+            "genres": ["미스터리"],
+            "rating": 7,
+            "popularity": 80,
+        },
+        {
+            "id": 11,
+            "title": "벽동",
+            "poster_url": "https://image.tmdb.org/t/p/w500/wall.jpg",
+            "genres": ["미스터리"],
+            "rating": 7,
+            "popularity": 80,
+        },
+    ]
+
+    ranked = rank_movies(movies, {"미스터리": 1.0}, {}, set(), limit=10)
+
+    assert [movie["id"] for movie in ranked] == [10]

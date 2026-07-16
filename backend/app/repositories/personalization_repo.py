@@ -97,16 +97,31 @@ def save_feedback(
     genres: list[str],
     action: str,
 ) -> None:
+    save_feedback_batch(
+        user_id,
+        [
+            {
+                "movie_id": movie_id,
+                "movie_title": movie_title,
+                "genres": genres,
+                "action": action,
+            }
+        ],
+    )
+
+
+def save_feedback_batch(user_id: int, feedback: list[dict]) -> None:
     with get_session() as session:
-        session.add(
-            Interaction(
-                user_id=user_id,
-                tmdb_movie_id=movie_id,
-                movie_title=movie_title,
-                movie_genres=",".join(genres),
-                action=action,
+        for item in feedback:
+            session.add(
+                Interaction(
+                    user_id=user_id,
+                    tmdb_movie_id=item["movie_id"],
+                    movie_title=item["movie_title"],
+                    movie_genres=",".join(item["genres"]),
+                    action=item["action"],
+                )
             )
-        )
 
         profile = (
             session.query(UserTasteProfile)
@@ -114,14 +129,24 @@ def save_feedback(
             .order_by(UserTasteProfile.updated_at.desc())
             .first()
         )
-        if profile is not None and action in {"liked", "disliked"}:
+        if profile is not None:
             weights = _loads(profile.genre_weights)
-            delta = 0.2 if action == "liked" else -0.15
-            for genre in genres:
-                weights[genre] = round(max(0.0, min(2.0, float(weights.get(genre, 0.5)) + delta)), 3)
+            scored_feedback = [
+                item for item in feedback if item["action"] in {"liked", "disliked"}
+            ]
+            for item in scored_feedback:
+                delta = 0.2 if item["action"] == "liked" else -0.15
+                for genre in item["genres"]:
+                    weights[genre] = round(
+                        max(0.0, min(2.0, float(weights.get(genre, 0.5)) + delta)),
+                        3,
+                    )
             profile.genre_weights = json.dumps(weights, ensure_ascii=False)
             current_confidence = float(profile.confidence_score or 0.45)
-            profile.confidence_score = min(0.95, current_confidence + 0.03)
+            profile.confidence_score = min(
+                0.95,
+                current_confidence + (0.03 * len(scored_feedback)),
+            )
             profile.updated_at = func.sysdate()
 
         session.commit()

@@ -10,6 +10,14 @@ _MOOD_GENRES = {
 }
 
 
+def _movie_identity(movie: dict) -> tuple[str, ...]:
+    poster_url = str(movie.get("poster_url") or "").strip()
+    if poster_url:
+        return ("poster", poster_url)
+    normalized_title = " ".join(str(movie.get("title") or "").casefold().split())
+    return ("title_year", normalized_title, str(movie.get("release_year") or ""))
+
+
 def rank_movies(
     movies: list[dict],
     genre_weights: dict[str, float],
@@ -26,6 +34,7 @@ def rank_movies(
 
     ranked: list[dict] = []
     seen_ids = set(excluded_ids)
+    seen_movie_identities: set[tuple[str, ...]] = set()
     for movie in movies:
         movie_id = movie.get("id")
         if movie_id is None:
@@ -33,7 +42,11 @@ def rank_movies(
         normalized_id = int(movie_id)
         if normalized_id in seen_ids:
             continue
+        movie_identity = _movie_identity(movie)
+        if movie_identity in seen_movie_identities:
+            continue
         seen_ids.add(normalized_id)
+        seen_movie_identities.add(movie_identity)
 
         genres = set(movie.get("genres", []))
         matched = genres & preferred

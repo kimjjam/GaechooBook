@@ -11,10 +11,13 @@ from app.repositories.personalization_repo import (
     get_profile_for_user,
     profile_preferences,
     save_feedback,
+    save_feedback_batch,
     save_onboarding,
 )
 from app.repositories.auth_repo import get_auth_context
 from app.schemas.personalization import (
+    FeedbackBatchRequest,
+    FeedbackBatchResponse,
     FeedbackRequest,
     FeedbackResponse,
     MovieDetailResponse,
@@ -99,7 +102,7 @@ def complete_onboarding(
 def get_recommendations(
     http_request: Request,
     visitor_token: str = Header(alias="X-Visitor-Token"),
-    limit: int = Query(default=10, ge=1, le=12),
+    limit: int = Query(default=10, ge=1, le=30),
     exclude_movie_ids: str = Query(default="", max_length=500),
 ) -> RecommendationResponse:
     try:
@@ -170,5 +173,32 @@ def record_feedback(
             request.action,
         )
         return FeedbackResponse(saved=True, message="다음 추천에 취향을 반영할게요.")
+    except OracleConnectionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/feedback/batch", response_model=FeedbackBatchResponse)
+def record_feedback_batch(
+    request: FeedbackBatchRequest,
+    http_request: Request,
+    x_csrf_token: str | None = Header(default=None),
+) -> FeedbackBatchResponse:
+    try:
+        user = _resolve_user(
+            http_request,
+            request.visitor_token,
+            x_csrf_token,
+            require_csrf=True,
+        )
+        if get_profile_for_user(user.id) is None:
+            raise HTTPException(status_code=409, detail="먼저 취향 설정을 완료해 주세요.")
+        save_feedback_batch(
+            user.id,
+            [item.model_dump() for item in request.feedback],
+        )
+        return FeedbackBatchResponse(
+            saved_count=len(request.feedback),
+            message="평가를 저장하고 다음 추천에 반영할게요.",
+        )
     except OracleConnectionError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

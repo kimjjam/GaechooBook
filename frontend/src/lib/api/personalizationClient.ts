@@ -14,6 +14,11 @@ interface OnboardingInput {
   favorite_movie?: string;
 }
 
+export interface FeedbackSelection {
+  movie: MovieRecommendation;
+  action: "liked" | "disliked";
+}
+
 export class ApiError extends Error {
   constructor(message: string, public readonly status: number) {
     super(message);
@@ -75,8 +80,9 @@ export function saveOnboarding(input: OnboardingInput, csrfToken?: string): Prom
 export async function getRecommendations(
   visitorToken: string,
   excludeMovieIds: number[] = [],
+  limit = 30,
 ): Promise<MovieRecommendation[]> {
-  const params = new URLSearchParams({ limit: "10" });
+  const params = new URLSearchParams({ limit: String(limit) });
   if (excludeMovieIds.length > 0) {
     params.set("exclude_movie_ids", excludeMovieIds.join(","));
   }
@@ -106,6 +112,26 @@ export function sendFeedback(
       movie_title: movie.title,
       genres: movie.genres,
       action,
+    }),
+  });
+}
+
+export function sendFeedbackBatch(
+  visitorToken: string,
+  feedback: FeedbackSelection[],
+  csrfToken?: string,
+): Promise<{ saved_count: number; message: string }> {
+  return apiFetch("/personalization/feedback/batch", {
+    method: "POST",
+    headers: csrfToken ? { "X-CSRF-Token": csrfToken } : undefined,
+    body: JSON.stringify({
+      visitor_token: visitorToken,
+      feedback: feedback.map(({ movie, action }) => ({
+        movie_id: movie.id,
+        movie_title: movie.title,
+        genres: movie.genres,
+        action,
+      })),
     }),
   });
 }
