@@ -397,6 +397,15 @@ export function MoodPickApp() {
   }
 
   async function handleShowMovieCards() {
+    if (movies.length > 0) {
+      setError(null);
+      setMovieView("cards");
+      window.scrollTo({ top: 0 });
+      if (moviePool.length <= MOVIE_POOL_PREFETCH_THRESHOLD) {
+        void refillMoviePool();
+      }
+      return;
+    }
     await loadFreshCardsBeforeShowing();
   }
 
