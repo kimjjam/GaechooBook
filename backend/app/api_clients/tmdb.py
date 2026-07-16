@@ -32,6 +32,10 @@ def _get_http_client() -> httpx.Client:
             if _http_client is None:
                 _http_client = httpx.Client(
                     timeout=httpx.Timeout(8, connect=5),
+                    transport=httpx.HTTPTransport(
+                        local_address="0.0.0.0",
+                        retries=1,
+                    ),
                     limits=httpx.Limits(
                         max_connections=2,
                         max_keepalive_connections=2,

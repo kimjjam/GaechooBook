@@ -1,5 +1,6 @@
 import httpx
 
+from app.api_clients import tmdb
 from app.api_clients.tmdb import TMDBClient
 
 
@@ -137,6 +138,27 @@ def test_tmdb_request_retries_once_after_read_timeout(monkeypatch):
 
     assert client._get("/discover/movie", {}) == {"results": []}
     assert len(calls) == 2
+
+
+def test_tmdb_shared_client_forces_ipv4(monkeypatch):
+    captured = {}
+
+    class FakeTransport:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured["client"] = kwargs
+
+    monkeypatch.setattr(tmdb.httpx, "HTTPTransport", FakeTransport)
+    monkeypatch.setattr(tmdb.httpx, "Client", FakeClient)
+    monkeypatch.setattr(tmdb, "_http_client", None)
+
+    tmdb._get_http_client()
+
+    assert captured["local_address"] == "0.0.0.0"
+    assert captured["retries"] == 1
 
 
 def test_discovery_passes_structured_filters_to_tmdb(monkeypatch):
