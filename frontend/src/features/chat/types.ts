@@ -13,6 +13,22 @@ export interface ChatMessage {
   movies?: MovieRecommendation[];
 }
 
+export interface RecommendationContext {
+  genres?: string[];
+  excluded_genres?: string[];
+  moods?: string[];
+  min_rating?: number | null;
+  max_rating?: number | null;
+  year_from?: number | null;
+  year_to?: number | null;
+  max_runtime?: number | null;
+  country?: string | null;
+  country_name?: string | null;
+  similar_to?: string | null;
+  limit?: number;
+  sort_by?: string;
+}
+
 export interface TasteProfile {
   visitor_token: string;
   onboarding_completed: boolean;

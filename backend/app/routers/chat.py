@@ -6,6 +6,10 @@ from fastapi import APIRouter, HTTPException, Request
 from app.api_clients.book_search import search_books
 from app.api_clients.tmdb import TMDBClient
 from app.core.preferences import preferred_genres
+from app.core.recommendation_query import (
+    looks_like_recommendation_followup,
+    parse_recommendation_query,
+)
 from app.core.scoring.recommendation import rank_movies
 from app.core.security import session_cookie
 from app.db.models import User
@@ -19,6 +23,7 @@ from app.repositories.personalization_repo import (
     get_profile_for_user,
     profile_preferences,
     save_conversation_genre_preference,
+    save_conversation_genre_dislike,
 )
 from app.repositories.auth_repo import get_auth_context
 from app.routers.classify import classify_utterance
@@ -60,6 +65,7 @@ def _handle_recommend(
     message: str,
     session_id: str,
     authenticated_user: User | None = None,
+    recommendation_context: dict | None = None,
 ) -> ChatResponse:
     genre = _extract_genre_keyword(message)
     wants_books = any(keyword in message for keyword in _BOOK_KEYWORDS)
@@ -95,35 +101,77 @@ def _handle_recommend(
                 "failed_providers": search_result.failed_providers,
             }
         else:
+            parsed = parse_recommendation_query(message, recommendation_context)
+            query = parsed.query
+            if parsed.needs_rating_clarification:
+                return ChatResponse(
+                    intent=Intent.RECOMMEND,
+                    reply="평점이 좋은 작품의 기준을 몇 점으로 할까요? 예: ‘7점 이상’",
+                    data={"recommendation_context": query.to_dict(), "needs_clarification": "min_rating"},
+                )
             user = authenticated_user or get_or_create_user(session_id)
             profile = get_profile_for_user(user.id)
             if profile is None:
                 return ChatResponse(intent=Intent.RECOMMEND, reply="먼저 위에서 취향 설정을 완료해 주세요.")
             genres, moods = profile_preferences(profile)
             learned_from_conversation = False
-            if genre:
-                genres[genre] = save_conversation_genre_preference(
-                    user.id,
-                    session_id,
-                    genre,
-                    message,
+            for requested_genre in query.genres:
+                genres[requested_genre] = save_conversation_genre_preference(
+                    user.id, session_id, requested_genre, message,
                 )
                 learned_from_conversation = True
-            requested_genres = [genre] if genre else preferred_genres(genres)
-            candidates = TMDBClient().discover_for_genres(requested_genres, count=40)
+            for disliked_genre in parsed.durable_dislikes:
+                genres[disliked_genre] = save_conversation_genre_dislike(
+                    user.id, session_id, disliked_genre, message,
+                )
+            requested_genres = query.genres or preferred_genres(genres)
+            client = TMDBClient()
+            if query.similar_to:
+                candidates = client.recommend_similar(
+                    query.similar_to,
+                    count=80,
+                    filters=query.tmdb_filters(),
+                )
+            else:
+                candidates = client.discover_for_genres(
+                    requested_genres,
+                    count=80,
+                    diversity_seed=session_id,
+                    filters=query.tmdb_filters(),
+                )
+            candidates = query.apply(candidates)
             movies = rank_movies(
                 candidates,
                 genres,
                 moods,
                 feedback_movie_ids(user.id),
-                limit=10,
+                limit=query.limit,
                 confidence=float(profile.confidence_score or 0.45),
+                requested_genres=query.genres,
+                requested_moods=query.moods,
+                query_description=query.describe(),
             )
+            if query.sort_by == "rating":
+                movies.sort(key=lambda item: item.get("rating") or 0, reverse=True)
+            elif query.sort_by == "recent":
+                movies.sort(key=lambda item: item.get("release_year") or 0, reverse=True)
             if not movies:
-                return ChatResponse(intent=Intent.RECOMMEND, reply="새로 추천할 영화를 찾지 못했어요.")
+                relaxation = []
+                if query.min_rating is not None:
+                    relaxation.append(f"평점 기준을 {max(0, query.min_rating - 0.5):g}점으로 낮추기")
+                if query.max_runtime is not None:
+                    relaxation.append(f"러닝타임을 {query.max_runtime + 20}분까지 늘리기")
+                suggestion = f" {' 또는 '.join(relaxation)}를 시도해볼까요?" if relaxation else " 조건을 하나 줄여 다시 찾아볼까요?"
+                return ChatResponse(
+                    intent=Intent.RECOMMEND,
+                    reply=f"‘{query.describe()}’ 조건에 맞는 새 영화를 찾지 못했어요.{suggestion}",
+                    data={"movies": [], "recommendation_context": query.to_dict()},
+                )
             data = {
                 "movies": movies,
-                "learned_genre": genre if learned_from_conversation else None,
+                "learned_genre": ", ".join(query.genres) if learned_from_conversation else None,
+                "recommendation_context": query.to_dict(),
+                "applied_filters": query.describe(),
             }
     except OracleConnectionError as exc:
         return ChatResponse(intent=Intent.RECOMMEND, reply=f"DB 연결에 실패해 추천을 가져오지 못했습니다: {exc}")
@@ -136,7 +184,7 @@ def _handle_recommend(
             prefix += f"(현재 응답하지 않은 제공자: {', '.join(data['failed_providers'])})\n"
         reply = prefix + "\n".join(lines)
     else:
-        reply = "저장된 취향을 반영해 추천 카드를 골라봤어요. 카드를 누르면 상세 정보와 예고편을 볼 수 있어요."
+        reply = f"{data['applied_filters']} 조건과 저장된 취향을 함께 반영했어요. 카드를 누르면 상세 정보와 예고편을 볼 수 있어요."
         if data.get("learned_genre"):
             reply = f"오늘 찾은 {data['learned_genre']} 장르도 가벼운 취향 신호로 기억할게요.\n" + reply
     return ChatResponse(intent=Intent.RECOMMEND, reply=reply, data=data)
@@ -200,4 +248,17 @@ def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
             raise HTTPException(status_code=401, detail="로그인 세션이 만료되었습니다.")
         authenticated_user = context.user
     intent = classify_utterance(request.message)
+    if (
+        intent in {Intent.CHITCHAT, Intent.NL2SQL}
+        and request.recommendation_context
+        and looks_like_recommendation_followup(request.message)
+    ):
+        intent = Intent.RECOMMEND
+    if intent == Intent.RECOMMEND:
+        return _handle_recommend(
+            request.message,
+            request.session_id,
+            authenticated_user,
+            request.recommendation_context,
+        )
     return _HANDLERS[intent](request.message, request.session_id, authenticated_user)

@@ -47,6 +47,7 @@ export function ChatWindow({
   const [bookTasteStep, setBookTasteStep] = useState(0);
   const [bookTasteAnswers, setBookTasteAnswers] = useState<string[]>([]);
   const [input, setInput] = useState("");
+  const [recommendationContext, setRecommendationContext] = useState<Record<string, unknown> | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,7 +86,15 @@ export function ChatWindow({
     setIsLoading(true);
 
     try {
-      const response = await sendChatMessage(sessionId, requestText);
+      const response = await sendChatMessage(
+        sessionId,
+        requestText,
+        mode === "movies" ? recommendationContext : null,
+      );
+      const nextContext = response.data?.recommendation_context;
+      if (mode === "movies" && nextContext && typeof nextContext === "object" && !Array.isArray(nextContext)) {
+        setRecommendationContext(nextContext as Record<string, unknown>);
+      }
       const movieData = response.data?.movies;
       const responseMovies = Array.isArray(movieData)
         ? movieData as MovieRecommendation[]

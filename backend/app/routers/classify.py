@@ -4,6 +4,7 @@
 3단계에서 llm_client.py와 함께 구현한다.
 """
 from app.schemas.chat import Intent
+from app.core.recommendation_query import MOVIE_GENRES
 
 # "보여줘"처럼 여러 intent에 공통으로 나오는 표현은 제외하고, 그 intent에서만
 # 쓰이는 표현으로 좁힌다 (예: 제안서 2.2의 "...평점 높은 순으로 5개 보여줘"는
@@ -13,6 +14,8 @@ _NL2SQL_KEYWORDS = ("몇 개", "평점", "년도", "연도", "국가", "순위",
 _RECOMMEND_KEYWORDS = ("추천", "보고싶", "보고 싶", "읽고싶", "읽고 싶")
 _BOOK_KEYWORDS = ("책", "도서", "소설", "에세이", "자기계발", "인문학")
 _BOOK_SEARCH_ACTIONS = ("검색", "찾아", "추천", "읽고")
+_MOVIE_PREFERENCE_ACTIONS = ("싫어", "싫다", "별로", "안 좋아", "빼고", "제외")
+_SIMILAR_MOVIE_WORDS = ("비슷한 영화", "비슷한 작품", "같은 영화", "같은 작품", "같은 느낌")
 
 
 def classify_utterance(message: str) -> Intent:
@@ -26,6 +29,13 @@ def classify_utterance(message: str) -> Intent:
     ):
         return Intent.RECOMMEND
     if any(keyword in text for keyword in _RECOMMEND_KEYWORDS):
+        return Intent.RECOMMEND
+    if any(keyword in text for keyword in _SIMILAR_MOVIE_WORDS):
+        return Intent.RECOMMEND
+    if (
+        any(genre.casefold() in text.casefold() for genre in MOVIE_GENRES)
+        and any(keyword in text for keyword in _MOVIE_PREFERENCE_ACTIONS)
+    ):
         return Intent.RECOMMEND
     if any(keyword in text for keyword in _NL2SQL_KEYWORDS):
         return Intent.NL2SQL

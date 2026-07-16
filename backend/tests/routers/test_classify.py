@@ -29,3 +29,11 @@ def test_chitchat_fallback():
 
 def test_book_search_is_routed_to_recommendation():
     assert classify_utterance("해리포터 책 검색해줘") == Intent.RECOMMEND
+
+
+def test_natural_language_movie_dislike_is_routed_to_recommendation():
+    assert classify_utterance("공포 영화는 싫어") == Intent.RECOMMEND
+
+
+def test_similar_movie_search_is_routed_to_recommendation():
+    assert classify_utterance("타이타닉과 비슷한 작품 찾아줘") == Intent.RECOMMEND

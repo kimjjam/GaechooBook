@@ -196,6 +196,47 @@ def save_conversation_genre_preference(
         return updated_weight
 
 
+def save_conversation_genre_dislike(
+    user_id: int,
+    session_id: str,
+    genre: str,
+    raw_snippet: str,
+) -> float:
+    """사용자가 '싫어/별로'라고 명시한 장르만 약한 장기 비선호로 저장한다."""
+    with get_session() as session:
+        profile = (
+            session.query(UserTasteProfile)
+            .filter(UserTasteProfile.user_id == user_id)
+            .order_by(UserTasteProfile.updated_at.desc())
+            .first()
+        )
+        if profile is None:
+            return 0.0
+
+        weights = _loads(profile.genre_weights)
+        current_weight = float(weights.get(genre, 0.0))
+        updated_weight = round(max(-2.0, min(-0.12, current_weight - 0.18)), 3)
+        weights[genre] = updated_weight
+        profile.genre_weights = json.dumps(weights, ensure_ascii=False)
+        profile.updated_at = func.sysdate()
+        session.add(
+            ConversationSignal(
+                session_id=session_id[:50],
+                extracted_preference=json.dumps(
+                    {
+                        "type": "movie_genre_dislike",
+                        "genre": genre,
+                        "weight_delta": -0.18,
+                    },
+                    ensure_ascii=False,
+                ),
+                raw_snippet=raw_snippet[:2000],
+            )
+        )
+        session.commit()
+        return updated_weight
+
+
 def feedback_movie_ids(user_id: int) -> set[int]:
     with get_session() as session:
         rows = (

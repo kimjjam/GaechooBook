@@ -68,6 +68,7 @@ class TMDBClient:
         genres: list[str],
         count: int = 30,
         diversity_seed: str | int | None = None,
+        filters: dict[str, str | int | float] | None = None,
     ) -> list[dict]:
         """선호 장르 안에서 인기작, 평점작, 최신작을 다양하게 가져온다."""
         genre_ids = [_GENRE_ID_BY_NAME[name] for name in genres if name in _GENRE_ID_BY_NAME]
@@ -77,6 +78,8 @@ class TMDBClient:
         }
         if genre_ids:
             base_params["with_genres"] = "|".join(str(value) for value in genre_ids)
+        if filters:
+            base_params.update(filters)
 
         seed_value = str(diversity_seed) if diversity_seed is not None else "|".join(sorted(genres))
         digest = hashlib.sha256(seed_value.encode("utf-8")).digest()
@@ -108,6 +111,68 @@ class TMDBClient:
                 if len(unique_results) >= count:
                     return [self._map_result(result) for result in unique_results]
         return [self._map_result(result) for result in unique_results]
+
+    def recommend_similar(
+        self,
+        title: str,
+        count: int = 40,
+        filters: dict[str, str | int | float] | None = None,
+    ) -> list[dict]:
+        """제목으로 기준 영화를 찾고 TMDB 유사 추천 결과를 반환한다."""
+        search = self._get("/search/movie", {"query": title, "include_adult": "false"})
+        matches = search.get("results", [])
+        if not matches:
+            return []
+        movie_id = matches[0].get("id")
+        if movie_id is None:
+            return []
+
+        candidates: list[dict] = []
+        seen_ids: set[int] = set()
+        for page in (1, 2):
+            data = self._get(f"/movie/{movie_id}/recommendations", {"page": page})
+            for item in data.get("results", []):
+                mapped = self._map_result(item)
+                mapped_id = mapped.get("id")
+                if mapped_id is None or mapped_id in seen_ids:
+                    continue
+                seen_ids.add(mapped_id)
+                candidates.append(mapped)
+
+        active_filters = filters or {}
+        if "with_runtime.lte" in active_filters and candidates:
+            def load_runtime(movie: dict) -> dict:
+                detail = self._get(f"/movie/{movie['id']}", {})
+                return {**movie, "runtime": detail.get("runtime")}
+
+            with ThreadPoolExecutor(max_workers=min(8, len(candidates))) as executor:
+                candidates = list(executor.map(load_runtime, candidates))
+
+        return [
+            movie for movie in candidates if self._matches_filters(movie, active_filters)
+        ][:count]
+
+    @staticmethod
+    def _matches_filters(movie: dict, filters: dict[str, str | int | float]) -> bool:
+        rating = float(movie.get("rating") or 0)
+        year = movie.get("release_year")
+        if "vote_average.gte" in filters and rating < float(filters["vote_average.gte"]):
+            return False
+        if "vote_average.lte" in filters and rating > float(filters["vote_average.lte"]):
+            return False
+        if "primary_release_date.gte" in filters:
+            minimum_year = int(str(filters["primary_release_date.gte"])[:4])
+            if year is None or int(year) < minimum_year:
+                return False
+        if "primary_release_date.lte" in filters:
+            maximum_year = int(str(filters["primary_release_date.lte"])[:4])
+            if year is None or int(year) > maximum_year:
+                return False
+        if "with_runtime.lte" in filters:
+            runtime = movie.get("runtime")
+            if runtime is None or int(runtime) > int(filters["with_runtime.lte"]):
+                return False
+        return True
 
     def get_movie_details(self, movie_id: int) -> dict:
         """영화 상세 정보와 재생 가능한 공식 YouTube 예고편을 반환한다."""

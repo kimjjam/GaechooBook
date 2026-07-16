@@ -16,6 +16,7 @@ class Intent(str, Enum):
 class ChatRequest(BaseModel):
     session_id: str
     message: str
+    recommendation_context: dict[str, Any] | None = None
 
 
 class ChatResponse(BaseModel):

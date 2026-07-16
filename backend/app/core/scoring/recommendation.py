@@ -28,6 +28,9 @@ def rank_movies(
     excluded_ids: set[int],
     limit: int = 8,
     confidence: float = 0.72,
+    requested_genres: list[str] | None = None,
+    requested_moods: list[str] | None = None,
+    query_description: str | None = None,
 ) -> list[dict]:
     preferred = set(preferred_genres(genre_weights))
     disliked = {genre for genre, weight in genre_weights.items() if float(weight) < 0}
@@ -35,6 +38,9 @@ def rank_movies(
     for mood, weight in mood_weights.items():
         if float(weight) > 0:
             mood_genres.update(_MOOD_GENRES.get(mood, set()))
+    for mood in requested_moods or []:
+        mood_genres.update(_MOOD_GENRES.get(mood, set()))
+    explicit_genres = set(requested_genres or [])
 
     ranked: list[dict] = []
     seen_ids = set(excluded_ids)
@@ -76,12 +82,20 @@ def rank_movies(
             penalty=min(0.35, disliked_strength),
         )
 
-        if matched:
-            reason = f"좋아하는 {', '.join(sorted(matched))} 장르와 잘 맞아요"
+        explicit_match = genres & explicit_genres
+        reasons: list[str] = []
+        if explicit_match:
+            reasons.append(f"요청한 {', '.join(sorted(explicit_match))} 장르")
+        elif matched:
+            reasons.append(f"좋아하는 {', '.join(sorted(matched))} 장르")
         elif genres & mood_genres:
-            reason = "선택한 감상 분위기와 잘 맞아요"
+            reasons.append("선택한 감상 분위기")
         else:
-            reason = "취향을 넓혀볼 만한 인기 작품이에요"
+            reasons.append("취향을 넓혀볼 만한 인기 작품")
+        reasons.append(f"평점 {float(movie.get('rating') or 0):.1f}")
+        if query_description:
+            reasons.append(f"{query_description} 조건 충족")
+        reason = " · ".join(reasons)
 
         ranked.append({**movie, "score": round(score, 3), "reason": reason})
 

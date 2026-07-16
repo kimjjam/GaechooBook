@@ -55,3 +55,61 @@ def test_discovery_seed_changes_candidate_pages(monkeypatch):
     capture_pages("user-8")
 
     assert pages_by_seed[0] != pages_by_seed[1]
+
+
+def test_discovery_passes_structured_filters_to_tmdb(monkeypatch):
+    client = TMDBClient(api_key="test")
+    calls = []
+    monkeypatch.setattr(
+        client,
+        "_get",
+        lambda _path, params: calls.append(params) or {"results": []},
+    )
+
+    client.discover_for_genres(
+        ["로맨스"],
+        filters={
+            "vote_average.gte": 7.0,
+            "primary_release_date.gte": "2020-01-01",
+            "with_runtime.lte": 120,
+        },
+    )
+
+    assert all(call["vote_average.gte"] == 7.0 for call in calls)
+    assert all(call["with_runtime.lte"] == 120 for call in calls)
+    assert all(call["with_genres"] == "10749" for call in calls)
+
+
+def test_similar_movie_recommendations_use_search_result(monkeypatch):
+    client = TMDBClient(api_key="test")
+    calls = []
+
+    def fake_get(path, params):
+        calls.append((path, params))
+        if path == "/search/movie":
+            return {"results": [{"id": 597, "title": "타이타닉"}]}
+        return {
+            "results": [
+                {
+                    "id": 1,
+                    "title": "비슷한 영화",
+                    "genre_ids": [10749],
+                    "release_date": "2022-01-01",
+                    "vote_average": 7.5,
+                },
+                {
+                    "id": 2,
+                    "title": "평점 미달",
+                    "genre_ids": [10749],
+                    "release_date": "2022-01-01",
+                    "vote_average": 6.5,
+                },
+            ]
+        }
+
+    monkeypatch.setattr(client, "_get", fake_get)
+    movies = client.recommend_similar("타이타닉", filters={"vote_average.gte": 7.0})
+
+    assert [movie["id"] for movie in movies] == [1]
+    assert calls[0][0] == "/search/movie"
+    assert calls[1][0] == "/movie/597/recommendations"

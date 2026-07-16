@@ -6,12 +6,17 @@ const API_BASE_URL =
 export async function sendChatMessage(
   sessionId: string,
   message: string,
+  recommendationContext?: Record<string, unknown> | null,
 ): Promise<ChatResponse> {
   const res = await fetch(`${API_BASE_URL}/chat`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId, message }),
+    body: JSON.stringify({
+      session_id: sessionId,
+      message,
+      recommendation_context: recommendationContext,
+    }),
   });
 
   if (!res.ok) {
