@@ -116,6 +116,11 @@ def get_recommendations(
             raise HTTPException(status_code=409, detail="먼저 취향 설정을 완료해 주세요.")
         genres, moods = profile_preferences(profile)
         active_genres = preferred_genres(genres)
+        primary_genres = sorted(
+            active_genres,
+            key=lambda genre: float(genres.get(genre, 0)),
+            reverse=True,
+        )[:2]
         requested_exclusions = {
             int(value)
             for value in exclude_movie_ids.split(",")
@@ -126,11 +131,11 @@ def get_recommendations(
         diversity_seed = f"{user.id}:{','.join(map(str, sorted(all_exclusions)))}"
         client = TMDBClient()
         candidates = client.discover_for_genres(
-            active_genres,
+            primary_genres,
             count=80,
             diversity_seed=diversity_seed,
             excluded_ids=all_exclusions,
-            require_all_genres=len(active_genres) > 1,
+            require_all_genres=len(primary_genres) > 1,
         )
         ranked = rank_movies(
             candidates,

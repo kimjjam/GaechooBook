@@ -224,6 +224,38 @@ def test_recommendations_relax_from_all_to_any_preferred_genre(monkeypatch):
     assert calls[:2] == [(["로맨스", "코미디"], True), (["로맨스", "코미디"], False)]
 
 
+def test_recommendations_require_only_two_strongest_genres_first(monkeypatch):
+    user = SimpleNamespace(id=14)
+    profile = SimpleNamespace(confidence_score=0.7)
+    calls = []
+    monkeypatch.setattr(personalization, "_resolve_user", lambda *_args, **_kwargs: user)
+    monkeypatch.setattr(personalization, "get_profile_for_user", lambda _user_id: profile)
+    monkeypatch.setattr(
+        personalization,
+        "profile_preferences",
+        lambda _profile: ({"가족": 0.6, "로맨스": 1.4, "코미디": 1.1}, {}),
+    )
+    monkeypatch.setattr(personalization, "feedback_movie_ids", lambda _user_id: set())
+
+    class FakeTMDBClient:
+        def discover_for_genres(
+            self, genres, count, diversity_seed, excluded_ids=None, require_all_genres=False,
+        ):
+            calls.append((genres, require_all_genres))
+            return [_movie(30), _movie(31)]
+
+    monkeypatch.setattr(personalization, "TMDBClient", FakeTMDBClient)
+
+    personalization.get_recommendations(
+        http_request=object(),
+        visitor_token="visitor-123",
+        limit=2,
+        exclude_movie_ids="",
+    )
+
+    assert calls[0] == (["로맨스", "코미디"], True)
+
+
 def test_liked_movies_returns_latest_saved_likes_with_tmdb_details(monkeypatch):
     user = SimpleNamespace(id=15)
     monkeypatch.setattr(personalization, "_resolve_user", lambda *_args, **_kwargs: user)
