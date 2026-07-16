@@ -20,6 +20,31 @@ export class ApiError extends Error {
   }
 }
 
+interface ValidationErrorDetail {
+  loc?: Array<string | number>;
+  msg?: string;
+}
+
+function getErrorMessage(body: unknown, status: number): string {
+  if (typeof body !== "object" || body === null || !("detail" in body)) {
+    return `서버 응답 오류: ${status}`;
+  }
+
+  const { detail } = body as { detail?: unknown };
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item: ValidationErrorDetail) => {
+        if (!item || typeof item.msg !== "string") return null;
+        const field = item.loc?.filter((part) => part !== "body").join(".");
+        return field ? `${field}: ${item.msg}` : item.msg;
+      })
+      .filter((message): message is string => Boolean(message));
+    if (messages.length > 0) return messages.join(", ");
+  }
+  return `서버 응답 오류: ${status}`;
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -27,8 +52,8 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new ApiError(body?.detail ?? `서버 응답 오류: ${response.status}`, response.status);
+    const body: unknown = await response.json().catch(() => null);
+    throw new ApiError(getErrorMessage(body, response.status), response.status);
   }
   return response.json() as Promise<T>;
 }

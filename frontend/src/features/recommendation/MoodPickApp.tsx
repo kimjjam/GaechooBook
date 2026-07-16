@@ -17,13 +17,21 @@ import { getAuthSession, logout } from "@/lib/api/authClient";
 
 const VISITOR_TOKEN_KEY = "moodpick_visitor_token";
 const CARD_RATING_TARGET = 10;
+const VISITOR_TOKEN_MIN_LENGTH = 8;
+const VISITOR_TOKEN_MAX_LENGTH = 64;
 type ContentType = "movies" | "books";
 type MovieView = "cards" | "chat";
 type GenreSignals = Record<string, number>;
 
 function getVisitorToken(): string {
   const stored = localStorage.getItem(VISITOR_TOKEN_KEY);
-  if (stored) return stored;
+  if (
+    stored
+    && stored.length >= VISITOR_TOKEN_MIN_LENGTH
+    && stored.length <= VISITOR_TOKEN_MAX_LENGTH
+  ) {
+    return stored;
+  }
   const token = crypto.randomUUID();
   localStorage.setItem(VISITOR_TOKEN_KEY, token);
   return token;
