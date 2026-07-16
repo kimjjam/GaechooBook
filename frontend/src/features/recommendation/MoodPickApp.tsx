@@ -4,15 +4,18 @@ import { useEffect, useRef, useState } from "react";
 
 import { AuthPanel } from "@/features/auth/AuthPanel";
 import { ChatWindow } from "@/features/chat/ChatWindow";
-import type { AuthSession, MovieRecommendation, TasteProfile } from "@/features/chat/types";
+import type { AuthSession, BookRecommendation, MovieRecommendation, TasteProfile } from "@/features/chat/types";
 import { OnboardingForm } from "@/features/onboarding/OnboardingForm";
+import { LikedBooksGrid } from "@/features/recommendation/LikedBooksGrid";
 import { LikedMoviesGrid } from "@/features/recommendation/LikedMoviesGrid";
 import { RecommendationGrid } from "@/features/recommendation/RecommendationGrid";
 import {
+  getLikedBooks,
   getLikedMovies,
   getProfile,
   getRecommendations,
   saveOnboarding,
+  sendBookFeedback,
   sendFeedback,
 } from "@/lib/api/personalizationClient";
 import { getAuthSession, logout } from "@/lib/api/authClient";
@@ -28,6 +31,7 @@ const VISITOR_TOKEN_MAX_LENGTH = 64;
 const MAX_TRACKED_MOVIE_IDS = 500;
 type ContentType = "movies" | "books";
 type MovieView = "cards" | "chat" | "liked";
+type BookView = "chat" | "liked";
 type GenreSignals = Record<string, number>;
 
 function getVisitorToken(): string {
@@ -111,7 +115,9 @@ export function MoodPickApp() {
   const [seenMovieIds, setSeenMovieIds] = useState<number[]>([]);
   const [seenMovieIdentities, setSeenMovieIdentities] = useState<string[]>([]);
   const [likedMovies, setLikedMovies] = useState<MovieRecommendation[]>([]);
+  const [likedBooks, setLikedBooks] = useState<BookRecommendation[]>([]);
   const [movieView, setMovieView] = useState<MovieView>("cards");
+  const [bookView, setBookView] = useState<BookView>("chat");
   const [isMovieChatUnlocked, setIsMovieChatUnlocked] = useState(false);
   const [isInitialCardRating, setIsInitialCardRating] = useState(false);
   const [ratedMovieCount, setRatedMovieCount] = useState(0);
@@ -121,12 +127,15 @@ export function MoodPickApp() {
   const [isContentLoading, setIsContentLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLikedMoviesLoading, setIsLikedMoviesLoading] = useState(false);
+  const [isLikedBooksLoading, setIsLikedBooksLoading] = useState(false);
   const [isEditingTaste, setIsEditingTaste] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isPoolRefillingRef = useRef(false);
   const feedbackWriteChainRef = useRef<Promise<void>>(Promise.resolve());
   const feedbackWritesRef = useRef<Set<Promise<unknown>>>(new Set());
+  const bookFeedbackWriteChainRef = useRef<Promise<void>>(Promise.resolve());
+  const bookFeedbackWritesRef = useRef<Set<Promise<unknown>>>(new Set());
 
   function showMovieBatch(nextMovies: MovieRecommendation[]) {
     const knownIds = new Set(seenMovieIds);
@@ -212,6 +221,8 @@ export function MoodPickApp() {
       setGenreSignals({});
       setMovieOpeningMessage("");
       void loadMovieExperience();
+    } else {
+      setBookView("chat");
     }
   }
 
@@ -394,6 +405,54 @@ export function MoodPickApp() {
     window.scrollTo({ top: 0 });
   }
 
+  function handleChatMovieLike(movie: MovieRecommendation) {
+    setError(null);
+    persistFeedback(movie, "liked");
+    setLikedMovies((current) => [
+      movie,
+      ...current.filter((candidate) => candidate.id !== movie.id),
+    ]);
+  }
+
+  function handleBookLike(book: BookRecommendation) {
+    setError(null);
+    const key = book.isbn || `${book.title}:${book.author || ""}`;
+    setLikedBooks((current) => [
+      book,
+      ...current.filter((candidate) => (
+        candidate.isbn || `${candidate.title}:${candidate.author || ""}`
+      ) !== key),
+    ]);
+    const write = bookFeedbackWriteChainRef.current
+      .then(() => sendBookFeedback(visitorToken, book, "liked", authSession?.csrf_token))
+      .then(() => undefined);
+    bookFeedbackWriteChainRef.current = write.catch(() => undefined);
+    bookFeedbackWritesRef.current.add(write);
+    void write
+      .catch((caught) => {
+        setError(caught instanceof Error ? caught.message : "책 좋아요를 저장하지 못했습니다.");
+      })
+      .finally(() => {
+        bookFeedbackWritesRef.current.delete(write);
+      });
+  }
+
+  async function handleShowLikedBooks() {
+    if (!visitorToken || isLikedBooksLoading) return;
+    setBookView("liked");
+    setIsLikedBooksLoading(true);
+    setError(null);
+    try {
+      await Promise.allSettled([...bookFeedbackWritesRef.current]);
+      setLikedBooks(await getLikedBooks(visitorToken));
+      window.scrollTo({ top: 0 });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "좋아요한 책을 불러오지 못했습니다.");
+    } finally {
+      setIsLikedBooksLoading(false);
+    }
+  }
+
   async function handleShowLikedMovies() {
     if (!visitorToken || isLikedMoviesLoading) return;
     setMovieView("liked");
@@ -436,6 +495,7 @@ export function MoodPickApp() {
       await logout(authSession.csrf_token);
       setAuthSession(null);
       setLikedMovies([]);
+      setLikedBooks([]);
       if (contentType === "movies") await loadMovieExperience();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "로그아웃하지 못했습니다.");
@@ -505,9 +565,35 @@ export function MoodPickApp() {
             <h1>지금 마음에 맞는 책,<br />함께 찾아드릴게요.</h1>
             <p>여러 도서 검색 결과를 한곳에서 비교해 추천합니다.</p>
           </header>
-          <section className="book-recommendation-panel" aria-label="도서 추천 대화">
-            <ChatWindow sessionId={visitorToken} mode="books" />
+          <nav className="movie-view-tabs book-view-tabs" aria-label="도서 메뉴" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={bookView === "chat"}
+              onClick={() => setBookView("chat")}
+            >
+              책 추천
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={bookView === "liked"}
+              onClick={() => void handleShowLikedBooks()}
+              disabled={isLikedBooksLoading}
+            >
+              좋아요한 책
+            </button>
+          </nav>
+          <section
+            className="book-recommendation-panel"
+            aria-label="도서 추천 대화"
+            hidden={bookView !== "chat"}
+          >
+            <ChatWindow sessionId={visitorToken} mode="books" onBookLike={handleBookLike} />
           </section>
+          <div className="liked-books-panel" role="tabpanel" hidden={bookView !== "liked"}>
+            <LikedBooksGrid books={likedBooks} isLoading={isLikedBooksLoading} />
+          </div>
         </>
       ) : isContentLoading ? (
         <div className="loading-card content-loading">영화 취향을 불러오고 있어요…</div>
@@ -597,6 +683,7 @@ export function MoodPickApp() {
                   initialAssistantMessage={movieOpeningMessage}
                   excludedMovieIds={seenMovieIds}
                   onMoviesRecommended={handleChatMoviesRecommended}
+                  onMovieLike={handleChatMovieLike}
                 />
               </div>
             </section>

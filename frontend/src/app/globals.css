@@ -181,6 +181,7 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
 .movie-view-tabs button { flex: 1; padding: 11px 14px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-weight: 800; }
 .movie-view-tabs button[aria-selected="true"] { background: var(--panel-soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
 .movie-view-tabs button:disabled { cursor: wait; opacity: 0.65; }
+.book-view-tabs { margin-top: 0; }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
 .rating-progress { display: grid; grid-template-columns: auto minmax(120px, 1fr) auto; align-items: center; gap: 14px; margin: -6px 0 24px; color: var(--muted); font-size: 12px; }
 .rating-progress > div:first-child { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
@@ -267,6 +268,9 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
 .chat-movie-cards { display: flex; gap: 10px; margin-left: 38px; padding: 2px 0 8px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: thin; }
 .chat-movie-card { width: 148px; min-width: 148px; padding: 0; overflow: hidden; scroll-snap-align: start; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--text); text-align: left; transition: transform 160ms ease, border-color 160ms ease; }
 .chat-movie-card:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.28); }
+.chat-card-main { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
+.chat-card-like { width: calc(100% - 16px); margin: 0 8px 8px; padding: 8px; border: 1px solid rgba(255, 99, 93, 0.35); border-radius: 9px; background: rgba(255, 99, 93, 0.08); color: #ffaaa6; font-size: 11px; font-weight: 800; }
+.chat-card-like:disabled { border-color: var(--line); color: var(--muted); opacity: 0.8; }
 .chat-movie-poster { position: relative; display: grid; aspect-ratio: 2 / 3; place-items: center; overflow: hidden; background: var(--panel-soft); color: var(--muted); font-size: 11px; font-weight: 900; letter-spacing: 0.08em; }
 .chat-movie-rating { position: absolute; right: 7px; bottom: 7px; padding: 4px 7px; border-radius: 999px; background: rgba(10, 10, 12, 0.88); color: var(--text); font-size: 10px; }
 .chat-movie-copy { display: grid; gap: 5px; padding: 11px; }
@@ -274,8 +278,18 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
 .chat-movie-copy small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .chat-movie-copy em { display: -webkit-box; overflow: hidden; color: #ffaaa6; font-size: 10px; font-style: normal; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .chat-book-cards { display: flex; gap: 12px; margin-left: 38px; padding: 2px 0 10px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: thin; }
-.chat-book-card { display: grid; width: 250px; min-width: 250px; grid-template-columns: 82px 1fr; gap: 12px; padding: 10px; overflow: hidden; scroll-snap-align: start; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--text); text-align: left; transition: transform 160ms ease, border-color 160ms ease; }
+.chat-book-card { width: 250px; min-width: 250px; padding: 10px; overflow: hidden; scroll-snap-align: start; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--text); text-align: left; transition: transform 160ms ease, border-color 160ms ease; }
 .chat-book-card:hover { transform: translateY(-2px); border-color: rgba(135, 156, 255, 0.62); }
+.chat-book-card-main { display: grid; grid-template-columns: 82px 1fr; gap: 12px; }
+.chat-book-card .chat-card-like { margin: 9px 0 0; width: 100%; border-color: rgba(135, 156, 255, 0.4); background: rgba(135, 156, 255, 0.08); color: #b9c4ff; }
+.liked-books-panel { min-height: 420px; padding: clamp(20px, 4vw, 32px); border: 1px solid var(--line); border-radius: 28px; background: var(--panel); }
+.liked-books-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.liked-book-card { display: grid; min-width: 0; grid-template-columns: 84px 1fr; gap: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel-soft); color: var(--text); text-align: left; }
+.liked-book-cover { display: block; aspect-ratio: 2 / 3; overflow: hidden; border-radius: 8px; background: #101014; }
+.liked-book-cover img { width: 100%; height: 100%; object-fit: cover; }
+.liked-book-card > span:last-child { display: grid; align-content: center; gap: 7px; min-width: 0; }
+.liked-book-card strong { overflow: hidden; line-height: 1.35; text-overflow: ellipsis; }
+.liked-book-card small, .liked-book-card em { color: var(--muted); font-size: 11px; font-style: normal; }
 .chat-book-cover { display: grid; aspect-ratio: 2 / 3; place-items: center; overflow: hidden; border-radius: 8px; background: linear-gradient(145deg, #292b3a, #181923); }
 .chat-book-cover img, .book-modal-cover img { width: 100%; height: 100%; object-fit: cover; }
 .book-cover-placeholder { color: #aebcff; font-size: 10px; font-weight: 900; letter-spacing: 0.14em; }
@@ -316,6 +330,7 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
 .movie-trailer-empty { margin: 0; padding: 28px; border-radius: 16px; background: #101014; color: var(--muted); text-align: center; }
 
 @media (max-width: 900px) { .movie-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .liked-books-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) {
   .app-shell { width: min(100% - 22px, 1120px); padding-top: 18px; }
   .hero { padding-bottom: 28px; }
@@ -342,7 +357,9 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
   .chat-avatar { width: 27px; height: 27px; flex-basis: 27px; }
   .chat-movie-cards { margin-left: 35px; }
   .chat-book-cards { margin-left: 35px; }
-  .chat-book-card { width: 230px; min-width: 230px; grid-template-columns: 74px 1fr; }
+  .chat-book-card { width: 230px; min-width: 230px; }
+  .chat-book-card-main { grid-template-columns: 74px 1fr; }
+  .liked-books-grid { grid-template-columns: 1fr; }
   .book-modal { width: 100%; grid-template-columns: 1fr; border-radius: 22px; }
   .book-modal-cover { min-height: 250px; max-height: 42vh; }
   .book-modal-cover img { padding: 22px; }

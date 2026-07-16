@@ -12,18 +12,22 @@ from app.repositories.personalization_repo import (
     feedback_movie_ids,
     get_or_create_user,
     get_profile_for_user,
+    liked_books_for_user,
     liked_movies_for_user,
     profile_preferences,
+    save_book_feedback,
     save_feedback,
     save_feedback_batch,
     save_onboarding,
 )
 from app.repositories.auth_repo import get_auth_context
 from app.schemas.personalization import (
+    BookFeedbackRequest,
     FeedbackBatchRequest,
     FeedbackBatchResponse,
     FeedbackRequest,
     FeedbackResponse,
+    LikedBooksResponse,
     MovieDetailResponse,
     MovieRecommendation,
     OnboardingRequest,
@@ -250,6 +254,40 @@ def get_liked_movies(
             hydrated = list(executor.map(hydrate, saved_movies))
         return RecommendationResponse(
             recommendations=[MovieRecommendation(**movie) for movie in hydrated]
+        )
+    except OracleConnectionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/book-feedback", response_model=FeedbackResponse)
+def record_book_feedback(
+    request: BookFeedbackRequest,
+    http_request: Request,
+    x_csrf_token: str | None = Header(default=None),
+) -> FeedbackResponse:
+    try:
+        user = _resolve_user(
+            http_request,
+            request.visitor_token,
+            x_csrf_token,
+            require_csrf=True,
+        )
+        save_book_feedback(user.id, request.book.model_dump(), request.action)
+        return FeedbackResponse(saved=True, message="책을 좋아요 목록에 반영했어요.")
+    except OracleConnectionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/liked-books", response_model=LikedBooksResponse)
+def get_liked_books(
+    http_request: Request,
+    visitor_token: str = Header(alias="X-Visitor-Token"),
+    limit: int = Query(default=50, ge=1, le=100),
+) -> LikedBooksResponse:
+    try:
+        user = _resolve_user(http_request, visitor_token)
+        return LikedBooksResponse(
+            books=liked_books_for_user(user.id, limit),
         )
     except OracleConnectionError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

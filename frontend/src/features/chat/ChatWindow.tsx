@@ -13,6 +13,8 @@ interface ChatWindowProps {
   initialAssistantMessage?: string;
   excludedMovieIds?: number[];
   onMoviesRecommended?: (movies: MovieRecommendation[]) => void;
+  onMovieLike?: (movie: MovieRecommendation) => void;
+  onBookLike?: (book: BookRecommendation) => void;
 }
 
 interface BookBasicProfile {
@@ -122,6 +124,8 @@ export function ChatWindow({
   initialAssistantMessage,
   excludedMovieIds = [],
   onMoviesRecommended,
+  onMovieLike,
+  onBookLike,
 }: ChatWindowProps) {
   const chatHistoryRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
@@ -377,10 +381,10 @@ export function ChatWindow({
               </span>
             </div>
             {m.role === "assistant" && m.movies && m.movies.length > 0 && (
-              <ChatMovieCards movies={m.movies} />
+              <ChatMovieCards movies={m.movies} onLike={onMovieLike} />
             )}
             {m.role === "assistant" && m.books && m.books.length > 0 && (
-              <ChatBookCards books={m.books} />
+              <ChatBookCards books={m.books} onLike={onBookLike} />
             )}
           </div>
         ))}

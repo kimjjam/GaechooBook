@@ -72,3 +72,27 @@ class FeedbackResponse(BaseModel):
 class FeedbackBatchResponse(BaseModel):
     saved_count: int
     message: str
+
+
+class BookRecord(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    author: str | None = Field(default=None, max_length=200)
+    publisher: str | None = Field(default=None, max_length=200)
+    pub_year: int | None = None
+    isbn: str | None = Field(default=None, max_length=30)
+    thumbnail_url: str | None = Field(default=None, max_length=1000)
+    description: str | None = Field(default=None, max_length=5000)
+    link: str | None = Field(default=None, max_length=1000)
+    genre: str | None = Field(default=None, max_length=200)
+    sources: list[str] = Field(default_factory=list, max_length=10)
+    recommendation_reason: str | None = Field(default=None, max_length=1000)
+
+
+class BookFeedbackRequest(BaseModel):
+    visitor_token: str = Field(min_length=8, max_length=64)
+    book: BookRecord
+    action: Literal["liked", "disliked"]
+
+
+class LikedBooksResponse(BaseModel):
+    books: list[BookRecord]

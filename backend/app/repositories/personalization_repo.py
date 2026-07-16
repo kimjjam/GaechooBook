@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 from sqlalchemy import func
@@ -6,6 +7,7 @@ from app.core.preferences import PREFERRED_GENRE_MIN_WEIGHT, updated_genre_weigh
 from app.db.models import (
     ConversationSignal,
     Interaction,
+    Item,
     OnboardingSignal,
     User,
     UserTasteProfile,
@@ -282,6 +284,71 @@ def liked_movies_for_user(user_id: int, limit: int = 30) -> list[dict]:
                     ],
                 }
             )
+            if len(liked) >= limit:
+                break
+        return liked
+
+
+def _book_external_id(book: dict) -> str:
+    isbn = "".join(character for character in str(book.get("isbn") or "").upper() if character.isdigit() or character == "X")
+    if isbn:
+        return f"isbn:{isbn}"[:50]
+    identity = f"{book.get('title', '')}|{book.get('author', '')}".casefold().encode("utf-8")
+    return f"book:{hashlib.sha256(identity).hexdigest()[:40]}"
+
+
+def save_book_feedback(user_id: int, book: dict, action: str) -> None:
+    external_id = _book_external_id(book)
+    with get_session() as session:
+        item = (
+            session.query(Item)
+            .filter(Item.item_type == "book", Item.external_id == external_id)
+            .first()
+        )
+        metadata = json.dumps(book, ensure_ascii=False)
+        if item is None:
+            item = Item(
+                item_type="book",
+                title=str(book.get("title") or "제목 미상")[:200],
+                external_id=external_id,
+                item_metadata=metadata,
+                tags=str(book.get("genre") or "")[:500],
+            )
+            session.add(item)
+            session.flush()
+        else:
+            item.title = str(book.get("title") or item.title or "제목 미상")[:200]
+            item.item_metadata = metadata
+            item.tags = str(book.get("genre") or item.tags or "")[:500]
+        session.add(Interaction(user_id=user_id, item_id=item.id, action=action))
+        session.commit()
+
+
+def liked_books_for_user(user_id: int, limit: int = 50) -> list[dict]:
+    """책별 가장 최근 평가가 liked인 항목만 최신순으로 반환한다."""
+    with get_session() as session:
+        rows = (
+            session.query(Interaction, Item)
+            .join(Item, Interaction.item_id == Item.id)
+            .filter(Interaction.user_id == user_id, Item.item_type == "book")
+            .order_by(Interaction.id.desc())
+            .all()
+        )
+        seen_item_ids: set[int] = set()
+        liked: list[dict] = []
+        for interaction, item in rows:
+            if item.id in seen_item_ids:
+                continue
+            seen_item_ids.add(item.id)
+            if interaction.action != "liked":
+                continue
+            try:
+                book = json.loads(item.item_metadata or "{}")
+            except (TypeError, json.JSONDecodeError):
+                book = {}
+            book["title"] = book.get("title") or item.title or "제목 미상"
+            book.setdefault("sources", [])
+            liked.append(book)
             if len(liked) >= limit:
                 break
         return liked

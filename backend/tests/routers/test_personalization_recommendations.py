@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from app.routers import personalization
-from app.schemas.personalization import FeedbackBatchRequest
+from app.schemas.personalization import BookFeedbackRequest, FeedbackBatchRequest
 
 
 def _movie(movie_id: int) -> dict:
@@ -329,3 +329,52 @@ def test_liked_movies_returns_latest_saved_likes_with_tmdb_details(monkeypatch):
 
     assert [movie.id for movie in response.recommendations] == [44]
     assert response.recommendations[0].reason == "좋아요한 영화"
+
+
+def test_book_feedback_is_saved_for_resolved_user(monkeypatch):
+    user = SimpleNamespace(id=21)
+    captured = {}
+    monkeypatch.setattr(personalization, "_resolve_user", lambda *_args, **_kwargs: user)
+    monkeypatch.setattr(
+        personalization,
+        "save_book_feedback",
+        lambda user_id, book, action: captured.update(user_id=user_id, book=book, action=action),
+    )
+
+    response = personalization.record_book_feedback(
+        request=BookFeedbackRequest(
+            visitor_token="visitor-123",
+            book={
+                "title": "좋아한 책",
+                "author": "작가",
+                "isbn": "9781234567890",
+                "sources": ["네이버"],
+            },
+            action="liked",
+        ),
+        http_request=object(),
+        x_csrf_token=None,
+    )
+
+    assert response.saved is True
+    assert captured["user_id"] == 21
+    assert captured["book"]["title"] == "좋아한 책"
+    assert captured["action"] == "liked"
+
+
+def test_liked_books_returns_saved_book_records(monkeypatch):
+    user = SimpleNamespace(id=22)
+    monkeypatch.setattr(personalization, "_resolve_user", lambda *_args, **_kwargs: user)
+    monkeypatch.setattr(
+        personalization,
+        "liked_books_for_user",
+        lambda user_id, limit: [{"title": "보관한 책", "author": "작가", "sources": ["구글"]}],
+    )
+
+    response = personalization.get_liked_books(
+        http_request=object(),
+        visitor_token="visitor-123",
+        limit=50,
+    )
+
+    assert [book.title for book in response.books] == ["보관한 책"]

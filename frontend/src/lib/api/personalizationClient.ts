@@ -1,4 +1,5 @@
 import type {
+  BookRecommendation,
   MovieDetail,
   MovieRecommendation,
   TasteProfile,
@@ -126,6 +127,27 @@ export async function getLikedMovies(visitorToken: string): Promise<MovieRecomme
     { headers: { "X-Visitor-Token": visitorToken } },
   );
   return result.recommendations;
+}
+
+export async function getLikedBooks(visitorToken: string): Promise<BookRecommendation[]> {
+  const result = await apiFetch<{ books: BookRecommendation[] }>(
+    "/personalization/liked-books?limit=100",
+    { headers: { "X-Visitor-Token": visitorToken } },
+  );
+  return result.books;
+}
+
+export function sendBookFeedback(
+  visitorToken: string,
+  book: BookRecommendation,
+  action: "liked" | "disliked",
+  csrfToken?: string,
+): Promise<{ saved: boolean; message: string }> {
+  return apiFetch("/personalization/book-feedback", {
+    method: "POST",
+    headers: csrfToken ? { "X-CSRF-Token": csrfToken } : undefined,
+    body: JSON.stringify({ visitor_token: visitorToken, book, action }),
+  });
 }
 
 export function sendFeedbackBatch(
