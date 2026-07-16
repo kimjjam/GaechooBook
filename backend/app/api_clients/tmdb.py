@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 _BASE_URL = "https://api.themoviedb.org/3"
-_MAX_REQUEST_ATTEMPTS = 2
+_MAX_REQUEST_ATTEMPTS = 1
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 logger = logging.getLogger(__name__)
 _http_client: httpx.Client | None = None
@@ -31,10 +31,12 @@ def _get_http_client() -> httpx.Client:
         with _http_client_lock:
             if _http_client is None:
                 _http_client = httpx.Client(
-                    timeout=httpx.Timeout(8, connect=5),
+                    # 추천은 여러 TMDB 페이지를 동시에 조회하므로, 느린 한 페이지가
+                    # 전체 Vercel 함수 시간을 소진하지 않게 빠르게 부분 결과로 전환한다.
+                    timeout=httpx.Timeout(4, connect=3),
                     transport=httpx.HTTPTransport(
                         local_address="0.0.0.0",
-                        retries=1,
+                        retries=0,
                     ),
                     limits=httpx.Limits(
                         max_connections=2,
