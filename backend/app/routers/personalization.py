@@ -145,11 +145,11 @@ def get_recommendations(
             limit,
             confidence=float(profile.confidence_score or 0.45),
         )
-        if len(ranked) < limit and len(active_genres) > 1:
+        if len(ranked) < limit and len(primary_genres) > 1:
             ranked_ids = {int(movie["id"]) for movie in ranked}
             partial_match_exclusions = all_exclusions | ranked_ids
             partial_match_candidates = client.discover_for_genres(
-                active_genres,
+                primary_genres,
                 count=80,
                 diversity_seed=f"{diversity_seed}:any-preferred-genre",
                 excluded_ids=partial_match_exclusions,
@@ -161,6 +161,26 @@ def get_recommendations(
                     genres,
                     moods,
                     partial_match_exclusions,
+                    limit - len(ranked),
+                    confidence=float(profile.confidence_score or 0.45),
+                )
+            )
+        if len(ranked) < limit and set(active_genres) != set(primary_genres):
+            ranked_ids = {int(movie["id"]) for movie in ranked}
+            preferred_exclusions = all_exclusions | ranked_ids
+            preferred_candidates = client.discover_for_genres(
+                active_genres,
+                count=80,
+                diversity_seed=f"{diversity_seed}:other-preferred-genres",
+                excluded_ids=preferred_exclusions,
+                require_all_genres=False,
+            )
+            ranked.extend(
+                rank_movies(
+                    preferred_candidates,
+                    genres,
+                    moods,
+                    preferred_exclusions,
                     limit - len(ranked),
                     confidence=float(profile.confidence_score or 0.45),
                 )
