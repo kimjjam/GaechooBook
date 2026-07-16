@@ -5,6 +5,7 @@ export interface BookPreferences {
   topic: string;
   reading_mood: string;
   age_group: string;
+  gender: string;
   mbti: string;
 }
 

@@ -18,6 +18,7 @@ class BookPreferences(BaseModel):
     topic: str = Field(min_length=1, max_length=50)
     reading_mood: str = Field(min_length=1, max_length=50)
     age_group: Literal["초등학생", "중학생", "고등학생", "20대", "30대", "40대", "50대 이상"]
+    gender: Literal["여성", "남성", "논바이너리", "응답하지 않음"]
     mbti: str = Field(pattern=r"^[EI][NS][TF][JP]$")
 
 
