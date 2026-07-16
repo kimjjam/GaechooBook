@@ -59,7 +59,7 @@ def test_discovery_seed_changes_candidate_pages(monkeypatch):
     assert pages_by_seed[0] != pages_by_seed[1]
 
 
-def test_discovery_expands_pages_when_exclusions_exhaust_initial_candidates(monkeypatch):
+def test_discovery_spreads_history_across_four_pages_without_request_amplification(monkeypatch):
     client = TMDBClient(api_key="test")
     calls = []
 
@@ -75,12 +75,12 @@ def test_discovery_expands_pages_when_exclusions_exhaust_initial_candidates(monk
         excluded_ids={1, 101, 102, 103, 104, 105},
     )
 
-    assert len(calls) > 4
+    assert len(calls) == 4
     assert all(movie["id"] not in {1, 101, 102, 103, 104, 105} for movie in results)
     assert len(results) > 0
-    expanded_pages = [call["page"] for call in calls[4:]]
-    assert all(2 <= page <= 500 for page in expanded_pages)
-    assert any(page > 30 for page in expanded_pages)
+    pages = [call["page"] for call in calls]
+    assert all(1 <= page <= 100 for page in pages)
+    assert any(page > 30 for page in pages)
 
 
 def test_discovery_keeps_results_when_one_tmdb_page_fails(monkeypatch):

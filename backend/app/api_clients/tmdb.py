@@ -7,7 +7,6 @@
 import hashlib
 import logging
 import os
-import random
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
@@ -126,26 +125,34 @@ class TMDBClient:
 
         seed_value = str(diversity_seed) if diversity_seed is not None else "|".join(sorted(genres))
         digest = hashlib.sha256(seed_value.encode("utf-8")).digest()
+        blocked_ids = {int(movie_id) for movie_id in (excluded_ids or set())}
+        if blocked_ids:
+            popularity_pages = (2 + digest[0] % 49, 51 + digest[1] % 50)
+            rating_page = 1 + digest[2] % 20
+            recent_page = 1 + digest[3] % 20
+        else:
+            popularity_pages = (1, 2 + digest[0] % 7)
+            rating_page = 1 + digest[1] % 5
+            recent_page = 1 + digest[2] % 5
         initial_request_params = [
-            {"sort_by": "popularity.desc", "vote_count.gte": 50, "page": 1},
-            {"sort_by": "popularity.desc", "vote_count.gte": 30, "page": 2 + digest[0] % 7},
-            {"sort_by": "vote_average.desc", "vote_count.gte": 200, "page": 1 + digest[1] % 5},
+            {"sort_by": "popularity.desc", "vote_count.gte": 50, "page": popularity_pages[0]},
+            {"sort_by": "popularity.desc", "vote_count.gte": 30, "page": popularity_pages[1]},
+            {"sort_by": "vote_average.desc", "vote_count.gte": 200, "page": rating_page},
             {
                 "sort_by": "primary_release_date.desc",
                 "primary_release_date.lte": date.today().isoformat(),
                 "vote_count.gte": 20,
-                "page": 1 + digest[2] % 5,
+                "page": recent_page,
             },
         ]
         unique_results: list[dict] = []
         seen_ids: set[int] = set()
-        blocked_ids = {int(movie_id) for movie_id in (excluded_ids or set())}
 
         def collect(request_params: list[dict[str, str | int]]) -> bool:
             queries = [{**base_params, **query_params} for query_params in request_params]
             responses: list[dict] = []
             request_errors: list[httpx.HTTPError] = []
-            with ThreadPoolExecutor(max_workers=min(8, len(queries))) as executor:
+            with ThreadPoolExecutor(max_workers=min(2, len(queries))) as executor:
                 futures = [
                     executor.submit(self._get, "/discover/movie", params)
                     for params in queries
@@ -176,41 +183,7 @@ class TMDBClient:
                         return True
             return False
 
-        if collect(initial_request_params):
-            return [self._map_result(result) for result in unique_results]
-
-        # 최근 노출작이 많으면 기본 4페이지만으로 후보가 고갈될 수 있다. 이때만
-        # 더 넓은 페이지를 조회해 실제로 새로운 후보를 채운다.
-        if blocked_ids:
-            page_rng = random.Random(int.from_bytes(digest[:8], "big"))
-            # TMDB discover는 최대 500페이지까지 탐색할 수 있다. 이미 본 영화가
-            # 많을수록 앞쪽 인기 페이지에만 머물지 않고 전체 카탈로그에서 고르게
-            # 페이지를 뽑아, 오래된 작품과 덜 알려진 작품도 후보에 들어오게 한다.
-            popularity_pages = page_rng.sample(range(2, 501), 8)
-            rating_pages = page_rng.sample(range(2, 501), 4)
-            recent_pages = page_rng.sample(range(2, 501), 4)
-            expanded_request_params = [
-                *(
-                    {"sort_by": "popularity.desc", "vote_count.gte": 20, "page": page}
-                    for page in popularity_pages
-                ),
-                *(
-                    {"sort_by": "vote_average.desc", "vote_count.gte": 100, "page": page}
-                    for page in rating_pages
-                ),
-                *(
-                    {
-                        "sort_by": "primary_release_date.desc",
-                        "primary_release_date.lte": date.today().isoformat(),
-                        "vote_count.gte": 10,
-                        "page": page,
-                    }
-                    for page in recent_pages
-                ),
-            ]
-            for offset in range(0, len(expanded_request_params), 4):
-                if collect(expanded_request_params[offset : offset + 4]):
-                    break
+        collect(initial_request_params)
         return [self._map_result(result) for result in unique_results]
 
     def recommend_similar(
