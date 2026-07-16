@@ -66,6 +66,7 @@ def _handle_recommend(
     session_id: str,
     authenticated_user: User | None = None,
     recommendation_context: dict | None = None,
+    exclude_movie_ids: list[int] | None = None,
 ) -> ChatResponse:
     genre = _extract_genre_keyword(message)
     wants_books = any(keyword in message for keyword in _BOOK_KEYWORDS)
@@ -125,6 +126,9 @@ def _handle_recommend(
                     user.id, session_id, disliked_genre, message,
                 )
             requested_genres = query.genres or preferred_genres(genres)
+            excluded_ids = feedback_movie_ids(user.id) | {
+                int(movie_id) for movie_id in (exclude_movie_ids or []) if int(movie_id) > 0
+            }
             client = TMDBClient()
             if query.similar_to:
                 candidates = client.recommend_similar(
@@ -144,7 +148,7 @@ def _handle_recommend(
                 candidates,
                 genres,
                 moods,
-                feedback_movie_ids(user.id),
+                excluded_ids,
                 limit=query.limit,
                 confidence=float(profile.confidence_score or 0.45),
                 requested_genres=query.genres,
@@ -260,5 +264,6 @@ def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
             request.session_id,
             authenticated_user,
             request.recommendation_context,
+            request.exclude_movie_ids,
         )
     return _HANDLERS[intent](request.message, request.session_id, authenticated_user)

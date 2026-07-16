@@ -23,6 +23,7 @@ const RECOMMENDATION_BATCH_SIZE = 60;
 const FEEDBACK_BATCH_SIZE = 5;
 const VISITOR_TOKEN_MIN_LENGTH = 8;
 const VISITOR_TOKEN_MAX_LENGTH = 64;
+const MAX_TRACKED_MOVIE_IDS = 500;
 type ContentType = "movies" | "books";
 type MovieView = "cards" | "chat";
 type GenreSignals = Record<string, number>;
@@ -114,7 +115,7 @@ export function MoodPickApp() {
     const uniqueMovies = uniqueMovieBatch(nextMovies, knownIds, knownIdentities);
     setMovies(uniqueMovies.slice(0, VISIBLE_CARD_COUNT));
     setMoviePool(uniqueMovies.slice(VISIBLE_CARD_COUNT));
-    setSeenMovieIds([...knownIds]);
+    setSeenMovieIds([...knownIds].slice(-MAX_TRACKED_MOVIE_IDS));
     setSeenMovieIdentities([...knownIdentities]);
   }
 
@@ -202,17 +203,13 @@ export function MoodPickApp() {
     try {
       const nextMovies = await getRecommendations(
         visitorToken,
-        movies.map((movie) => movie.id),
+        seenMovieIds,
         RECOMMENDATION_BATCH_SIZE,
       );
       if (nextMovies.length === 0) {
         throw new Error("새로 보여드릴 영화를 모두 살펴봤어요. 취향을 조금 바꾸거나 카드를 평가해 주세요.");
       }
-      const nextMovieIds = new Set(nextMovies.map((movie) => movie.id));
-      const fillers = movies
-        .filter((movie) => !nextMovieIds.has(movie.id))
-        .slice(0, Math.max(0, VISIBLE_CARD_COUNT - nextMovies.length));
-      showMovieBatch([...nextMovies, ...fillers], true);
+      showMovieBatch(nextMovies);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "추천을 불러오지 못했습니다.");
     } finally {
@@ -273,10 +270,19 @@ export function MoodPickApp() {
         try {
           const replacementCandidates = await getRecommendations(
             visitorToken,
-            movies.map((candidate) => candidate.id),
+            seenMovieIds,
             RECOMMENDATION_BATCH_SIZE,
           );
-          [replacement, ...nextPool] = replacementCandidates;
+          const knownIds = new Set(seenMovieIds);
+          const knownIdentities = new Set(seenMovieIdentities);
+          const uniqueReplacements = uniqueMovieBatch(
+            replacementCandidates,
+            knownIds,
+            knownIdentities,
+          );
+          setSeenMovieIds([...knownIds].slice(-MAX_TRACKED_MOVIE_IDS));
+          setSeenMovieIdentities([...knownIdentities]);
+          [replacement, ...nextPool] = uniqueReplacements;
         } catch (caught) {
           setError(caught instanceof Error ? caught.message : "새 영화를 불러오지 못했습니다.");
           return;
@@ -328,6 +334,15 @@ export function MoodPickApp() {
   function handleReturnToMovieChat() {
     setMovieView("chat");
     window.scrollTo({ top: 0 });
+  }
+
+  function handleChatMoviesRecommended(recommendedMovies: MovieRecommendation[]) {
+    setSeenMovieIds((current) => [
+      ...new Set([...current, ...recommendedMovies.map((movie) => movie.id)]),
+    ].slice(-MAX_TRACKED_MOVIE_IDS));
+    setSeenMovieIdentities((current) => [
+      ...new Set([...current, ...recommendedMovies.map(movieIdentity)]),
+    ]);
   }
 
   async function handleAuthenticated(session: AuthSession) {
@@ -484,6 +499,8 @@ export function MoodPickApp() {
                   sessionId={visitorToken}
                   mode="movies"
                   initialAssistantMessage={movieOpeningMessage}
+                  excludedMovieIds={seenMovieIds}
+                  onMoviesRecommended={handleChatMoviesRecommended}
                 />
               </div>
               <button className="secondary-button card-return-button" type="button" onClick={() => void handleShowMovieCards()}>

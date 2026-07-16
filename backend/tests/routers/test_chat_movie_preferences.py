@@ -59,6 +59,7 @@ def test_rating_and_year_filters_are_applied(monkeypatch):
             captured.update(genres=genres, filters=filters)
             return [
                 {"id": 1, "title": "통과", "release_year": 2023, "rating": 7.8, "genres": ["로맨스"], "popularity": 10},
+                {"id": 4, "title": "새 추천", "release_year": 2022, "rating": 7.6, "genres": ["로맨스"], "popularity": 9},
                 {"id": 2, "title": "낮은 평점", "release_year": 2024, "rating": 6.9, "genres": ["로맨스"], "popularity": 100},
                 {"id": 3, "title": "오래된 영화", "release_year": 2019, "rating": 8.5, "genres": ["로맨스"], "popularity": 100},
             ]
@@ -67,12 +68,13 @@ def test_rating_and_year_filters_are_applied(monkeypatch):
     response = chat._handle_recommend(
         "평가 7점 이상인 2020년 이후 로맨스 영화 추천해줘",
         "visitor-123",
+        exclude_movie_ids=[1],
     )
 
     assert captured["genres"] == ["로맨스"]
     assert captured["filters"]["vote_average.gte"] == 7.0
     assert captured["filters"]["primary_release_date.gte"] == "2020-01-01"
-    assert [movie["id"] for movie in response.data["movies"]] == [1]
+    assert [movie["id"] for movie in response.data["movies"]] == [4]
     assert response.data["recommendation_context"]["min_rating"] == 7.0
 
 

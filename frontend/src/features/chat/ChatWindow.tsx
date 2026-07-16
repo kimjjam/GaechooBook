@@ -9,6 +9,8 @@ interface ChatWindowProps {
   sessionId: string;
   mode?: "general" | "movies" | "books";
   initialAssistantMessage?: string;
+  excludedMovieIds?: number[];
+  onMoviesRecommended?: (movies: MovieRecommendation[]) => void;
 }
 
 const BOOK_TASTE_QUESTIONS = [
@@ -31,11 +33,14 @@ const MOVIE_SUGGESTIONS = [
   "가볍게 웃을 수 있는 영화 추천해줘",
   "몰입감 좋은 SF 영화 추천해줘",
 ];
+const MAX_EXCLUDED_MOVIE_IDS = 500;
 
 export function ChatWindow({
   sessionId,
   mode = "general",
   initialAssistantMessage,
+  excludedMovieIds = [],
+  onMoviesRecommended,
 }: ChatWindowProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const openingMessage = initialAssistantMessage
@@ -48,6 +53,7 @@ export function ChatWindow({
   const [bookTasteAnswers, setBookTasteAnswers] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [recommendationContext, setRecommendationContext] = useState<Record<string, unknown> | null>(null);
+  const [recommendedMovieIds, setRecommendedMovieIds] = useState<number[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,6 +96,9 @@ export function ChatWindow({
         sessionId,
         requestText,
         mode === "movies" ? recommendationContext : null,
+        mode === "movies"
+          ? [...new Set([...excludedMovieIds, ...recommendedMovieIds])].slice(-MAX_EXCLUDED_MOVIE_IDS)
+          : [],
       );
       const nextContext = response.data?.recommendation_context;
       if (mode === "movies" && nextContext && typeof nextContext === "object" && !Array.isArray(nextContext)) {
@@ -99,6 +108,12 @@ export function ChatWindow({
       const responseMovies = Array.isArray(movieData)
         ? movieData as MovieRecommendation[]
         : undefined;
+      if (responseMovies && responseMovies.length > 0) {
+        setRecommendedMovieIds((current) => [
+          ...new Set([...current, ...responseMovies.map((movie) => movie.id)]),
+        ].slice(-MAX_EXCLUDED_MOVIE_IDS));
+        onMoviesRecommended?.(responseMovies);
+      }
       setMessages((prev) => [
         ...prev,
         {

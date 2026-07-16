@@ -7,6 +7,7 @@ export async function sendChatMessage(
   sessionId: string,
   message: string,
   recommendationContext?: Record<string, unknown> | null,
+  excludeMovieIds: number[] = [],
 ): Promise<ChatResponse> {
   const res = await fetch(`${API_BASE_URL}/chat`, {
     method: "POST",
@@ -16,6 +17,7 @@ export async function sendChatMessage(
       session_id: sessionId,
       message,
       recommendation_context: recommendationContext,
+      exclude_movie_ids: excludeMovieIds,
     }),
   });
 

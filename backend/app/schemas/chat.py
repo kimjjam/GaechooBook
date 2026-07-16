@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Intent(str, Enum):
@@ -17,6 +17,7 @@ class ChatRequest(BaseModel):
     session_id: str
     message: str
     recommendation_context: dict[str, Any] | None = None
+    exclude_movie_ids: list[int] = Field(default_factory=list, max_length=500)
 
 
 class ChatResponse(BaseModel):

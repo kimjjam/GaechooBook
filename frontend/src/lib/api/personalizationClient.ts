@@ -6,6 +6,7 @@ import type {
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/backend";
+const MAX_QUERY_EXCLUDED_MOVIE_IDS = 200;
 
 interface OnboardingInput {
   visitor_token: string;
@@ -84,7 +85,10 @@ export async function getRecommendations(
 ): Promise<MovieRecommendation[]> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (excludeMovieIds.length > 0) {
-    params.set("exclude_movie_ids", excludeMovieIds.join(","));
+    params.set(
+      "exclude_movie_ids",
+      excludeMovieIds.slice(-MAX_QUERY_EXCLUDED_MOVIE_IDS).join(","),
+    );
   }
   const result = await apiFetch<{ recommendations: MovieRecommendation[] }>(
     `/personalization/recommendations?${params.toString()}`,
