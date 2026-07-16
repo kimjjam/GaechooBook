@@ -6,6 +6,7 @@
 """
 import hashlib
 import os
+import random
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
@@ -69,6 +70,7 @@ class TMDBClient:
         count: int = 30,
         diversity_seed: str | int | None = None,
         filters: dict[str, str | int | float] | None = None,
+        excluded_ids: set[int] | None = None,
     ) -> list[dict]:
         """선호 장르 안에서 인기작, 평점작, 최신작을 다양하게 가져온다."""
         genre_ids = [_GENRE_ID_BY_NAME[name] for name in genres if name in _GENRE_ID_BY_NAME]
@@ -83,7 +85,7 @@ class TMDBClient:
 
         seed_value = str(diversity_seed) if diversity_seed is not None else "|".join(sorted(genres))
         digest = hashlib.sha256(seed_value.encode("utf-8")).digest()
-        request_params = [
+        initial_request_params = [
             {"sort_by": "popularity.desc", "vote_count.gte": 50, "page": 1},
             {"sort_by": "popularity.desc", "vote_count.gte": 30, "page": 2 + digest[0] % 7},
             {"sort_by": "vote_average.desc", "vote_count.gte": 200, "page": 1 + digest[1] % 5},
@@ -94,22 +96,55 @@ class TMDBClient:
                 "page": 1 + digest[2] % 5,
             },
         ]
-
-        queries = [{**base_params, **query_params} for query_params in request_params]
-        with ThreadPoolExecutor(max_workers=len(queries)) as executor:
-            responses = list(executor.map(lambda params: self._get("/discover/movie", params), queries))
-
         unique_results: list[dict] = []
         seen_ids: set[int] = set()
-        for data in responses:
-            for item in data.get("results", []):
-                movie_id = item.get("id")
-                if movie_id is None or movie_id in seen_ids:
-                    continue
-                seen_ids.add(movie_id)
-                unique_results.append(item)
-                if len(unique_results) >= count:
-                    return [self._map_result(result) for result in unique_results]
+        blocked_ids = {int(movie_id) for movie_id in (excluded_ids or set())}
+
+        def collect(request_params: list[dict[str, str | int]]) -> bool:
+            queries = [{**base_params, **query_params} for query_params in request_params]
+            with ThreadPoolExecutor(max_workers=min(8, len(queries))) as executor:
+                responses = list(executor.map(lambda params: self._get("/discover/movie", params), queries))
+            for data in responses:
+                for item in data.get("results", []):
+                    movie_id = item.get("id")
+                    if movie_id is None or movie_id in blocked_ids or movie_id in seen_ids:
+                        continue
+                    seen_ids.add(movie_id)
+                    unique_results.append(item)
+                    if len(unique_results) >= count:
+                        return True
+            return False
+
+        if collect(initial_request_params):
+            return [self._map_result(result) for result in unique_results]
+
+        # 최근 노출작이 많으면 기본 4페이지만으로 후보가 고갈될 수 있다. 이때만
+        # 더 넓은 페이지를 조회해 실제로 새로운 후보를 채운다.
+        if blocked_ids:
+            page_rng = random.Random(int.from_bytes(digest[:8], "big"))
+            popularity_pages = page_rng.sample(range(2, 31), 4)
+            rating_pages = page_rng.sample(range(2, 21), 2)
+            recent_pages = page_rng.sample(range(2, 21), 2)
+            expanded_request_params = [
+                *(
+                    {"sort_by": "popularity.desc", "vote_count.gte": 20, "page": page}
+                    for page in popularity_pages
+                ),
+                *(
+                    {"sort_by": "vote_average.desc", "vote_count.gte": 100, "page": page}
+                    for page in rating_pages
+                ),
+                *(
+                    {
+                        "sort_by": "primary_release_date.desc",
+                        "primary_release_date.lte": date.today().isoformat(),
+                        "vote_count.gte": 10,
+                        "page": page,
+                    }
+                    for page in recent_pages
+                ),
+            ]
+            collect(expanded_request_params)
         return [self._map_result(result) for result in unique_results]
 
     def recommend_similar(

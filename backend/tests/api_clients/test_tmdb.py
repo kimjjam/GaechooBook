@@ -57,6 +57,27 @@ def test_discovery_seed_changes_candidate_pages(monkeypatch):
     assert pages_by_seed[0] != pages_by_seed[1]
 
 
+def test_discovery_expands_pages_when_exclusions_exhaust_initial_candidates(monkeypatch):
+    client = TMDBClient(api_key="test")
+    calls = []
+
+    def fake_get(_path, params):
+        calls.append(params)
+        return {"results": [_movie(1), _movie(100 + params["page"])]}
+
+    monkeypatch.setattr(client, "_get", fake_get)
+    results = client.discover_for_genres(
+        [],
+        count=10,
+        diversity_seed="user-with-history",
+        excluded_ids={1, 101, 102, 103, 104, 105},
+    )
+
+    assert len(calls) > 4
+    assert all(movie["id"] not in {1, 101, 102, 103, 104, 105} for movie in results)
+    assert len(results) > 0
+
+
 def test_discovery_passes_structured_filters_to_tmdb(monkeypatch):
     client = TMDBClient(api_key="test")
     calls = []

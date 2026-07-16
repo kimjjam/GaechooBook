@@ -119,17 +119,19 @@ def get_recommendations(
             if value.strip().isdigit()
         }
         saved_exclusions = feedback_movie_ids(user.id)
-        diversity_seed = f"{user.id}:{','.join(map(str, sorted(saved_exclusions | requested_exclusions)))}"
+        all_exclusions = saved_exclusions | requested_exclusions
+        diversity_seed = f"{user.id}:{','.join(map(str, sorted(all_exclusions)))}"
         candidates = TMDBClient().discover_for_genres(
             active_genres,
             count=80,
             diversity_seed=diversity_seed,
+            excluded_ids=all_exclusions,
         )
         ranked = rank_movies(
             candidates,
             genres,
             moods,
-            saved_exclusions | requested_exclusions,
+            all_exclusions,
             limit,
             confidence=float(profile.confidence_score or 0.45),
         )

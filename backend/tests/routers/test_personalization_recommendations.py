@@ -62,7 +62,7 @@ def test_recommendations_exclude_ids_requested_by_client(monkeypatch):
     monkeypatch.setattr(personalization, "feedback_movie_ids", lambda _user_id: {1})
 
     class FakeTMDBClient:
-        def discover_for_genres(self, _genres, count, diversity_seed):
+        def discover_for_genres(self, _genres, count, diversity_seed, excluded_ids=None):
             assert count == 80
             assert diversity_seed == "7:1,2"
             return [_movie(1), _movie(2), _movie(3)]
@@ -134,7 +134,7 @@ def test_recommendations_do_not_send_weak_or_disliked_genres_to_tmdb(monkeypatch
     monkeypatch.setattr(personalization, "feedback_movie_ids", lambda _user_id: set())
 
     class FakeTMDBClient:
-        def discover_for_genres(self, genres, count, diversity_seed):
+        def discover_for_genres(self, genres, count, diversity_seed, excluded_ids=None):
             captured["genres"] = genres
             return []
 
