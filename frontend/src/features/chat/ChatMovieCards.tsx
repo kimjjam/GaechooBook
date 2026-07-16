@@ -55,7 +55,7 @@ export function ChatMovieCards({ movies, onLike }: ChatMovieCardsProps) {
               disabled={likedMovieIds.has(movie.id)}
               aria-label={`${movie.title} 취향에 저장`}
             >
-              {likedMovieIds.has(movie.id) ? "✓ 저장됨" : "♡ 취향이에요"}
+              {likedMovieIds.has(movie.id) ? "✓ 저장됨" : "♡ MY MOOD"}
             </button>
           </article>
         ))}

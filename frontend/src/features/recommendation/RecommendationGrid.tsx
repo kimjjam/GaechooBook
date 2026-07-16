@@ -87,7 +87,7 @@ export function RecommendationGrid({
                     onClick={() => onFeedback(movie, "liked")}
                     aria-label={`${movie.title} 좋아요`}
                   >
-                    👍 취향이에요
+                    👍 MY MOOD
                   </button>
                   <button
                     type="button"
@@ -95,7 +95,7 @@ export function RecommendationGrid({
                     onClick={() => onFeedback(movie, "disliked")}
                     aria-label={`${movie.title} 싫어요`}
                   >
-                    👎 다음엔 빼기
+                    👎 NOT FOR ME
                   </button>
                 </div>
               </div>

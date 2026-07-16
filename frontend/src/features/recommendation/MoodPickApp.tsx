@@ -617,7 +617,7 @@ export function MoodPickApp() {
             <>
           <div className="taste-summary">
             <div>
-              <span>기억 중인 취향</span>
+              <span>YOUR MOOD STREAM</span>
               <strong>{profile.favorite_genres.join(" · ")}</strong>
             </div>
             <button type="button" onClick={() => setIsEditingTaste(true)}>취향 수정</button>
