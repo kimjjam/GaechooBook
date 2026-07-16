@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChatMovieCards } from "@/features/chat/ChatMovieCards";
 import { ChatBookCards } from "@/features/chat/ChatBookCards";
 import { sendChatMessage } from "@/lib/api/chatClient";
@@ -71,6 +71,7 @@ export function ChatWindow({
   excludedMovieIds = [],
   onMoviesRecommended,
 }: ChatWindowProps) {
+  const chatHistoryRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const openingMessage = initialAssistantMessage
       ?? (mode === "books" ? BOOK_TASTE_QUESTIONS[0].prompt : "");
@@ -85,6 +86,11 @@ export function ChatWindow({
   const [recommendedMovieIds, setRecommendedMovieIds] = useState<number[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const history = chatHistoryRef.current;
+    if (history) history.scrollTop = history.scrollHeight;
+  }, [messages, bookTasteStep, isLoading, error]);
 
   async function sendMessage(text: string) {
     if (!text || isLoading) return;
@@ -172,7 +178,7 @@ export function ChatWindow({
 
   return (
     <div className="chat-window">
-      <div className="chat-history" aria-live="polite">
+      <div ref={chatHistoryRef} className="chat-history" aria-live="polite">
         {messages.length === 0 && mode === "movies" && (
           <div className="chat-empty-state">
             <strong>오늘은 어떤 영화가 끌리나요?</strong>
