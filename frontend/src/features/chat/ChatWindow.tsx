@@ -29,8 +29,12 @@ const BOOK_TASTE_QUESTIONS = [
     options: ["가볍고 편하게", "깊이 생각하며", "빠르게 몰입해서", "따뜻하게 쉬면서"],
   },
   {
-    prompt: "연령대에 맞지 않는 문제집이나 자습서는 빼드릴게요. 어느 연령대인가요?",
+    prompt: "나이에 맞는 일반 도서만 추천할게요. 어느 연령대인가요?",
     options: ["초등학생", "중학생", "고등학생", "20대", "30대", "40대", "50대 이상"],
+  },
+  {
+    prompt: "성별도 선택해 주세요. 추천을 고정관념으로 나누지 않고, 관련 주제를 직접 요청할 때만 참고할게요.",
+    options: ["여성", "남성", "논바이너리", "응답하지 않음"],
   },
   {
     prompt: "마지막으로 추천에 살짝 참고할 MBTI도 알려주세요. 독서 취향을 넓히는 보조 신호로만 사용할게요.",
@@ -106,12 +110,13 @@ export function ChatWindow({
         ]);
         return;
       }
-      const [genre, topic, readingMood, ageGroup, mbti] = nextAnswers;
+      const [genre, topic, readingMood, ageGroup, gender, mbti] = nextAnswers;
       nextBookPreferences = {
         genre,
         topic,
         reading_mood: readingMood,
         age_group: ageGroup,
+        gender,
         mbti,
       };
       setBookPreferences(nextBookPreferences);
