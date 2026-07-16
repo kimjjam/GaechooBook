@@ -18,7 +18,7 @@ import { getAuthSession, logout } from "@/lib/api/authClient";
 
 const VISITOR_TOKEN_KEY = "moodpick_visitor_token";
 const CARD_RATING_TARGET = 10;
-const VISIBLE_CARD_COUNT = 10;
+const VISIBLE_CARD_COUNT = 30;
 const RECOMMENDATION_BATCH_SIZE = 30;
 const FEEDBACK_BATCH_SIZE = 5;
 const VISITOR_TOKEN_MIN_LENGTH = 8;
@@ -116,11 +116,19 @@ export function MoodPickApp() {
     setSeenMovieIdentities([...knownIdentities]);
   }
 
-  function addMoviesToPool(nextMovies: MovieRecommendation[]) {
+  function addMoviesToPool(
+    nextMovies: MovieRecommendation[],
+    currentMovies: MovieRecommendation[],
+  ) {
     const knownIds = new Set(seenMovieIds);
     const knownIdentities = new Set(seenMovieIdentities);
     const additions = uniqueMovieBatch(nextMovies, knownIds, knownIdentities);
-    setMoviePool((currentPool) => [...currentPool, ...additions]);
+    const availableSlots = Math.max(0, VISIBLE_CARD_COUNT - currentMovies.length);
+    setMovies([...currentMovies, ...additions.slice(0, availableSlots)]);
+    setMoviePool((currentPool) => [
+      ...currentPool,
+      ...additions.slice(availableSlots),
+    ]);
     setSeenMovieIds([...knownIds]);
     setSeenMovieIdentities([...knownIdentities]);
   }
@@ -252,7 +260,8 @@ export function MoodPickApp() {
 
     const remainingMovies = movies.filter((candidate) => candidate.id !== movie.id);
     const [replacement, ...remainingPool] = moviePool;
-    setMovies(replacement ? [...remainingMovies, replacement] : remainingMovies);
+    const nextVisibleMovies = replacement ? [...remainingMovies, replacement] : remainingMovies;
+    setMovies(nextVisibleMovies);
     setMoviePool(remainingPool);
     setPendingFeedback(nextPendingFeedback);
     setRatedMovieCount(nextCount);
@@ -270,7 +279,7 @@ export function MoodPickApp() {
             seenMovieIds,
             RECOMMENDATION_BATCH_SIZE,
           );
-          addMoviesToPool(nextMovies);
+          addMoviesToPool(nextMovies, nextVisibleMovies);
         }
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "평가 묶음을 저장하지 못했습니다.");
