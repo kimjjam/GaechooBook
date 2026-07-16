@@ -252,6 +252,7 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
 .movie-chat-window { min-height: 430px; }
 .movie-chat-window > div { min-height: 430px; }
 .card-return-button { display: block; margin: 18px auto 0; }
+.chat-return-button { display: block; width: auto; margin: 28px auto 0; padding: 13px 22px; }
 .chat-movie-cards { display: flex; gap: 10px; margin-left: 38px; padding: 2px 0 8px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: thin; }
 .chat-movie-card { width: 148px; min-width: 148px; padding: 0; overflow: hidden; scroll-snap-align: start; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--text); text-align: left; transition: transform 160ms ease, border-color 160ms ease; }
 .chat-movie-card:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.28); }

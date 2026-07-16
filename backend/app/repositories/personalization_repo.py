@@ -2,6 +2,7 @@ import json
 
 from sqlalchemy import func
 
+from app.core.preferences import PREFERRED_GENRE_MIN_WEIGHT, updated_genre_weight
 from app.db.models import (
     ConversationSignal,
     Interaction,
@@ -135,11 +136,10 @@ def save_feedback_batch(user_id: int, feedback: list[dict]) -> None:
                 item for item in feedback if item["action"] in {"liked", "disliked"}
             ]
             for item in scored_feedback:
-                delta = 0.2 if item["action"] == "liked" else -0.15
                 for genre in item["genres"]:
-                    weights[genre] = round(
-                        max(0.0, min(2.0, float(weights.get(genre, 0.5)) + delta)),
-                        3,
+                    weights[genre] = updated_genre_weight(
+                        weights.get(genre),
+                        item["action"],
                     )
             profile.genre_weights = json.dumps(weights, ensure_ascii=False)
             current_confidence = float(profile.confidence_score or 0.45)
@@ -171,7 +171,10 @@ def save_conversation_genre_preference(
 
         weights = _loads(profile.genre_weights)
         current_weight = float(weights.get(genre, 0.0))
-        updated_weight = round(min(2.0, current_weight + 0.12), 3)
+        updated_weight = round(
+            min(2.0, max(PREFERRED_GENRE_MIN_WEIGHT, current_weight + 0.12)),
+            3,
+        )
         weights[genre] = updated_weight
         profile.genre_weights = json.dumps(weights, ensure_ascii=False)
         profile.updated_at = func.sysdate()

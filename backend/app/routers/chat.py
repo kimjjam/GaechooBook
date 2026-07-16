@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from app.api_clients.book_search import search_books
 from app.api_clients.tmdb import TMDBClient
+from app.core.preferences import preferred_genres
 from app.core.scoring.recommendation import rank_movies
 from app.core.security import session_cookie
 from app.db.models import User
@@ -108,9 +109,7 @@ def _handle_recommend(
                     message,
                 )
                 learned_from_conversation = True
-            requested_genres = [genre] if genre else [
-                name for name, weight in genres.items() if float(weight) > 0
-            ]
+            requested_genres = [genre] if genre else preferred_genres(genres)
             candidates = TMDBClient().discover_for_genres(requested_genres, count=40)
             movies = rank_movies(
                 candidates,

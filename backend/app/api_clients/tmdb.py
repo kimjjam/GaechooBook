@@ -4,7 +4,10 @@
 예시("2010년대 한국 영화 중 평점 높은 순")가 시드 데이터만으로 실제 결과를
 반환하게 하기 위함.
 """
+import hashlib
 import os
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 
 import httpx
 from dotenv import load_dotenv
@@ -60,23 +63,51 @@ class TMDBClient:
             "country": country,
         }
 
-    def discover_for_genres(self, genres: list[str], count: int = 30) -> list[dict]:
-        """선호 장르를 중심으로 현재 TMDB 후보를 가져온다."""
+    def discover_for_genres(
+        self,
+        genres: list[str],
+        count: int = 30,
+        diversity_seed: str | int | None = None,
+    ) -> list[dict]:
+        """선호 장르 안에서 인기작, 평점작, 최신작을 다양하게 가져온다."""
         genre_ids = [_GENRE_ID_BY_NAME[name] for name in genres if name in _GENRE_ID_BY_NAME]
-        params: dict[str, str | int] = {
-            "sort_by": "popularity.desc",
+        base_params: dict[str, str | int] = {
             "include_adult": "false",
-            "vote_count.gte": 30,
-            "page": 1,
+            "include_video": "false",
         }
         if genre_ids:
-            params["with_genres"] = "|".join(str(value) for value in genre_ids)
+            base_params["with_genres"] = "|".join(str(value) for value in genre_ids)
 
-        first_page = self._get("/discover/movie", params)
-        results = list(first_page.get("results", []))
-        if count > 20 and first_page.get("total_pages", 1) > 1:
-            results.extend(self._get("/discover/movie", {**params, "page": 2}).get("results", []))
-        return [self._map_result(item) for item in results[:count]]
+        seed_value = str(diversity_seed) if diversity_seed is not None else "|".join(sorted(genres))
+        digest = hashlib.sha256(seed_value.encode("utf-8")).digest()
+        request_params = [
+            {"sort_by": "popularity.desc", "vote_count.gte": 50, "page": 1},
+            {"sort_by": "popularity.desc", "vote_count.gte": 30, "page": 2 + digest[0] % 7},
+            {"sort_by": "vote_average.desc", "vote_count.gte": 200, "page": 1 + digest[1] % 5},
+            {
+                "sort_by": "primary_release_date.desc",
+                "primary_release_date.lte": date.today().isoformat(),
+                "vote_count.gte": 20,
+                "page": 1 + digest[2] % 5,
+            },
+        ]
+
+        queries = [{**base_params, **query_params} for query_params in request_params]
+        with ThreadPoolExecutor(max_workers=len(queries)) as executor:
+            responses = list(executor.map(lambda params: self._get("/discover/movie", params), queries))
+
+        unique_results: list[dict] = []
+        seen_ids: set[int] = set()
+        for data in responses:
+            for item in data.get("results", []):
+                movie_id = item.get("id")
+                if movie_id is None or movie_id in seen_ids:
+                    continue
+                seen_ids.add(movie_id)
+                unique_results.append(item)
+                if len(unique_results) >= count:
+                    return [self._map_result(result) for result in unique_results]
+        return [self._map_result(result) for result in unique_results]
 
     def get_movie_details(self, movie_id: int) -> dict:
         """영화 상세 정보와 재생 가능한 공식 YouTube 예고편을 반환한다."""

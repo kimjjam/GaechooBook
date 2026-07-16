@@ -2,6 +2,7 @@ import httpx
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 
 from app.api_clients.tmdb import TMDBClient
+from app.core.preferences import preferred_genres
 from app.core.scoring.recommendation import rank_movies
 from app.core.security import session_cookie, verify_csrf
 from app.db.oracle_client import OracleConnectionError
@@ -55,7 +56,7 @@ def _profile_response(visitor_token: str, user) -> ProfileResponse:
     return ProfileResponse(
         visitor_token=visitor_token,
         onboarding_completed=True,
-        favorite_genres=list(genres.keys()),
+        favorite_genres=preferred_genres(genres),
         moods=list(moods.keys()),
     )
 
@@ -102,8 +103,8 @@ def complete_onboarding(
 def get_recommendations(
     http_request: Request,
     visitor_token: str = Header(alias="X-Visitor-Token"),
-    limit: int = Query(default=10, ge=1, le=30),
-    exclude_movie_ids: str = Query(default="", max_length=500),
+    limit: int = Query(default=10, ge=1, le=60),
+    exclude_movie_ids: str = Query(default="", max_length=2000),
 ) -> RecommendationResponse:
     try:
         user = _resolve_user(http_request, visitor_token)
@@ -111,20 +112,24 @@ def get_recommendations(
         if profile is None:
             raise HTTPException(status_code=409, detail="먼저 취향 설정을 완료해 주세요.")
         genres, moods = profile_preferences(profile)
-        preferred_genres = [
-            genre for genre, weight in genres.items() if float(weight) > 0
-        ]
-        candidates = TMDBClient().discover_for_genres(preferred_genres, count=40)
+        active_genres = preferred_genres(genres)
         requested_exclusions = {
             int(value)
             for value in exclude_movie_ids.split(",")
             if value.strip().isdigit()
         }
+        saved_exclusions = feedback_movie_ids(user.id)
+        diversity_seed = f"{user.id}:{','.join(map(str, sorted(saved_exclusions | requested_exclusions)))}"
+        candidates = TMDBClient().discover_for_genres(
+            active_genres,
+            count=80,
+            diversity_seed=diversity_seed,
+        )
         ranked = rank_movies(
             candidates,
             genres,
             moods,
-            feedback_movie_ids(user.id) | requested_exclusions,
+            saved_exclusions | requested_exclusions,
             limit,
             confidence=float(profile.confidence_score or 0.45),
         )

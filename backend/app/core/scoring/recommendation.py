@@ -1,3 +1,6 @@
+import math
+
+from app.core.preferences import preferred_genres
 from app.core.scoring.functions import compute_final_score
 
 
@@ -26,7 +29,8 @@ def rank_movies(
     limit: int = 8,
     confidence: float = 0.72,
 ) -> list[dict]:
-    preferred = {genre for genre, weight in genre_weights.items() if float(weight) > 0}
+    preferred = set(preferred_genres(genre_weights))
+    disliked = {genre for genre, weight in genre_weights.items() if float(weight) < 0}
     mood_genres: set[str] = set()
     for mood, weight in mood_weights.items():
         if float(weight) > 0:
@@ -55,12 +59,21 @@ def rank_movies(
         mood_fit = min(1.0, len(genres & mood_genres) / 2) if mood_genres else 0.5
         similarity = 0.75 * genre_fit + 0.25 * mood_fit
         rating = float(movie.get("rating") or 0) / 10
-        popularity = min(1.0, float(movie.get("popularity") or 0) / 300)
+        # 인기도 차이를 완만하게 만들어 취향과 평점이 최종 순위에 더 잘 반영되게 한다.
+        popularity = min(
+            1.0,
+            math.log1p(float(movie.get("popularity") or 0)) / math.log1p(1000),
+        )
+        disliked_strength = max(
+            (abs(float(genre_weights.get(genre, 0))) for genre in genres & disliked),
+            default=0.0,
+        )
         score = compute_final_score(
             confidence=max(0.0, min(1.0, confidence)),
             similarity=similarity,
             recency_bonus=rating,
             popularity_score=popularity,
+            penalty=min(0.35, disliked_strength),
         )
 
         if matched:
