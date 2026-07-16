@@ -97,6 +97,7 @@ export function MoodPickApp() {
   const [pendingFeedback, setPendingFeedback] = useState<FeedbackSelection[]>([]);
   const [movieView, setMovieView] = useState<MovieView>("cards");
   const [isMovieChatUnlocked, setIsMovieChatUnlocked] = useState(false);
+  const [isInitialCardRating, setIsInitialCardRating] = useState(false);
   const [ratedMovieCount, setRatedMovieCount] = useState(0);
   const [genreSignals, setGenreSignals] = useState<GenreSignals>({});
   const [movieOpeningMessage, setMovieOpeningMessage] = useState("");
@@ -151,6 +152,17 @@ export function MoodPickApp() {
         ? await getRecommendations(visitorToken, [], RECOMMENDATION_BATCH_SIZE)
         : [];
       showMovieBatch(nextMovies, true);
+      if (restoredProfile.onboarding_completed) {
+        setIsInitialCardRating(false);
+        setIsMovieChatUnlocked(true);
+        setRatedMovieCount(0);
+        setMovieOpeningMessage(
+          restoredProfile.favorite_genres.length > 0
+            ? `기억하고 있는 ${joinGenres(restoredProfile.favorite_genres)} 취향을 바탕으로 도와드릴게요. 오늘은 어떤 영화가 끌리세요?`
+            : "기억하고 있는 취향을 바탕으로 도와드릴게요. 오늘은 어떤 영화가 끌리세요?",
+        );
+        setMovieView("chat");
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "영화 추천을 불러오지 못했습니다.");
     } finally {
@@ -165,6 +177,7 @@ export function MoodPickApp() {
     if (selected === "movies") {
       setMovieView("cards");
       setIsMovieChatUnlocked(false);
+      setIsInitialCardRating(false);
       setRatedMovieCount(0);
       setMoviePool([]);
       setSeenMovieIds([]);
@@ -213,6 +226,7 @@ export function MoodPickApp() {
     favoriteMovie: string;
   }) {
     setError(null);
+    const isFirstTasteSetup = !profile?.onboarding_completed;
     try {
       const savedProfile = await saveOnboarding({
         visitor_token: visitorToken,
@@ -222,8 +236,9 @@ export function MoodPickApp() {
       }, authSession?.csrf_token);
       setProfile(savedProfile);
       setIsEditingTaste(false);
-      setMovieView("cards");
-      setIsMovieChatUnlocked(false);
+      setMovieView(isFirstTasteSetup ? "cards" : "chat");
+      setIsMovieChatUnlocked(!isFirstTasteSetup);
+      setIsInitialCardRating(isFirstTasteSetup);
       setRatedMovieCount(0);
       setPendingFeedback([]);
       setGenreSignals({});
@@ -240,7 +255,9 @@ export function MoodPickApp() {
 
   async function handleFeedback(movie: MovieRecommendation, action: "liked" | "disliked") {
     setError(null);
-    const nextCount = Math.min(ratedMovieCount + 1, CARD_RATING_TARGET);
+    const nextCount = isInitialCardRating
+      ? Math.min(ratedMovieCount + 1, CARD_RATING_TARGET)
+      : ratedMovieCount;
     const nextPendingFeedback = [...pendingFeedback, { movie, action }];
     const signalDelta = action === "liked" ? 1 : -1;
     const nextGenreSignals = { ...genreSignals };
@@ -250,7 +267,7 @@ export function MoodPickApp() {
 
     let nextVisibleMovies = movies;
     let remainingPool = moviePool;
-    if (isMovieChatUnlocked || nextCount < CARD_RATING_TARGET) {
+    if (!isInitialCardRating || isMovieChatUnlocked || nextCount < CARD_RATING_TARGET) {
       let [replacement, ...nextPool] = moviePool;
       if (!replacement) {
         try {
@@ -291,11 +308,12 @@ export function MoodPickApp() {
       }
     }
 
-    if (!isMovieChatUnlocked && nextCount >= CARD_RATING_TARGET) {
+    if (isInitialCardRating && nextCount >= CARD_RATING_TARGET) {
       setMovieOpeningMessage(
         buildMovieOpeningMessage(profile?.favorite_genres ?? [], nextGenreSignals),
       );
       setIsMovieChatUnlocked(true);
+      setIsInitialCardRating(false);
       setMovieView("chat");
       window.scrollTo({ top: 0 });
     }
@@ -434,6 +452,7 @@ export function MoodPickApp() {
                 isRefreshing={isRefreshing}
                 ratedCount={ratedMovieCount}
                 ratingTarget={CARD_RATING_TARGET}
+                showRatingProgress={isInitialCardRating}
                 onFeedback={handleFeedback}
                 onRefresh={refreshRecommendations}
               />

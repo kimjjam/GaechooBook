@@ -10,6 +10,7 @@ interface RecommendationGridProps {
   isRefreshing: boolean;
   ratedCount: number;
   ratingTarget: number;
+  showRatingProgress: boolean;
   onFeedback: (movie: MovieRecommendation, action: "liked" | "disliked") => Promise<void>;
   onRefresh: () => Promise<void>;
 }
@@ -19,6 +20,7 @@ export function RecommendationGrid({
   isRefreshing,
   ratedCount,
   ratingTarget,
+  showRatingProgress,
   onFeedback,
   onRefresh,
 }: RecommendationGridProps) {
@@ -45,16 +47,18 @@ export function RecommendationGrid({
         </button>
       </div>
 
-      <div className="rating-progress" aria-live="polite">
-        <div>
-          <strong>{ratedCount} / {ratingTarget}</strong>
-          <span>편 평가</span>
+      {showRatingProgress && (
+        <div className="rating-progress" aria-live="polite">
+          <div>
+            <strong>{ratedCount} / {ratingTarget}</strong>
+            <span>편 평가</span>
+          </div>
+          <div className="rating-progress-track" aria-hidden="true">
+            <span style={{ width: `${Math.min(100, (ratedCount / ratingTarget) * 100)}%` }} />
+          </div>
+          <p>{ratingTarget}편을 평가하면 대화 추천으로 자동 전환돼요.</p>
         </div>
-        <div className="rating-progress-track" aria-hidden="true">
-          <span style={{ width: `${Math.min(100, (ratedCount / ratingTarget) * 100)}%` }} />
-        </div>
-        <p>{ratingTarget}편을 평가하면 대화 추천으로 자동 전환돼요.</p>
-      </div>
+      )}
 
       {movies.length === 0 ? (
         <div className="empty-state">
