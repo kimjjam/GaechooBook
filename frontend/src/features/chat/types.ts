@@ -11,6 +11,20 @@ export interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   movies?: MovieRecommendation[];
+  books?: BookRecommendation[];
+}
+
+export interface BookRecommendation {
+  title: string;
+  author?: string | null;
+  publisher?: string | null;
+  pub_year?: number | null;
+  isbn?: string | null;
+  thumbnail_url?: string | null;
+  description?: string | null;
+  link?: string | null;
+  genre?: string | null;
+  sources: string[];
 }
 
 export interface RecommendationContext {

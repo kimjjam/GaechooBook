@@ -262,6 +262,27 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
 .chat-movie-copy strong { overflow: hidden; font-size: 13px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .chat-movie-copy small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .chat-movie-copy em { display: -webkit-box; overflow: hidden; color: #ffaaa6; font-size: 10px; font-style: normal; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.chat-book-cards { display: flex; gap: 12px; margin-left: 38px; padding: 2px 0 10px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: thin; }
+.chat-book-card { display: grid; width: 250px; min-width: 250px; grid-template-columns: 82px 1fr; gap: 12px; padding: 10px; overflow: hidden; scroll-snap-align: start; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--text); text-align: left; transition: transform 160ms ease, border-color 160ms ease; }
+.chat-book-card:hover { transform: translateY(-2px); border-color: rgba(135, 156, 255, 0.62); }
+.chat-book-cover { display: grid; aspect-ratio: 2 / 3; place-items: center; overflow: hidden; border-radius: 8px; background: linear-gradient(145deg, #292b3a, #181923); }
+.chat-book-cover img, .book-modal-cover img { width: 100%; height: 100%; object-fit: cover; }
+.book-cover-placeholder { color: #aebcff; font-size: 10px; font-weight: 900; letter-spacing: 0.14em; }
+.book-cover-placeholder.large { font-size: 16px; }
+.chat-book-copy { display: flex; min-width: 0; flex-direction: column; justify-content: center; gap: 7px; }
+.chat-book-copy strong { display: -webkit-box; overflow: hidden; font-size: 14px; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.chat-book-copy small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.chat-book-copy em { color: #aebcff; font-size: 10px; font-style: normal; line-height: 1.4; }
+.book-modal { position: relative; display: grid; width: min(760px, 94vw); max-height: 92vh; grid-template-columns: minmax(210px, 36%) 1fr; overflow-y: auto; border: 1px solid var(--line); border-radius: 28px; background: var(--panel); box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55); }
+.book-modal-cover { display: grid; min-height: 460px; place-items: center; overflow: hidden; background: linear-gradient(145deg, #2b2e43, #111217); }
+.book-modal-cover img { object-fit: contain; padding: 32px; filter: drop-shadow(0 18px 24px rgba(0, 0, 0, 0.42)); }
+.book-modal-body { display: flex; min-width: 0; flex-direction: column; justify-content: center; gap: 16px; padding: clamp(32px, 5vw, 52px); }
+.book-modal-eyebrow, .book-modal-author, .book-modal-sources { margin: 0; }
+.book-modal-eyebrow { color: #aebcff; font-size: 12px; font-weight: 800; letter-spacing: 0.05em; }
+.book-modal-body h2 { margin: 0; font-size: clamp(28px, 4vw, 42px); line-height: 1.15; letter-spacing: -0.045em; }
+.book-modal-author { color: var(--muted); font-size: 14px; }
+.book-modal-sources { color: var(--muted); font-size: 11px; }
+.book-detail-link { align-self: flex-start; padding: 12px 16px; border-radius: 12px; background: #879cff; color: #0d1020; font-size: 13px; font-weight: 850; text-decoration: none; }
 .movie-modal-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(0, 0, 0, 0.78); backdrop-filter: blur(8px); }
 .movie-modal { position: relative; width: min(920px, 94vw); max-height: 92vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 28px; background: var(--panel); box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55); }
 .movie-modal-close { position: absolute; z-index: 3; top: 14px; right: 14px; display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 50%; background: rgba(10, 10, 12, 0.72); color: var(--text); font-size: 27px; line-height: 1; }
@@ -303,6 +324,12 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
   .chat-bubble { max-width: 84%; font-size: 13px; }
   .chat-avatar { width: 27px; height: 27px; flex-basis: 27px; }
   .chat-movie-cards { margin-left: 35px; }
+  .chat-book-cards { margin-left: 35px; }
+  .chat-book-card { width: 230px; min-width: 230px; grid-template-columns: 74px 1fr; }
+  .book-modal { width: 100%; grid-template-columns: 1fr; border-radius: 22px; }
+  .book-modal-cover { min-height: 250px; max-height: 42vh; }
+  .book-modal-cover img { padding: 22px; }
+  .book-modal-body { padding: 28px 22px; }
   .movie-modal-backdrop { padding: 10px; }
   .movie-modal { width: 100%; max-height: 95vh; border-radius: 22px; }
   .movie-modal-visual { min-height: 270px; border-radius: 22px 22px 0 0; }
