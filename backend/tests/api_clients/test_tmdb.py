@@ -76,6 +76,9 @@ def test_discovery_expands_pages_when_exclusions_exhaust_initial_candidates(monk
     assert len(calls) > 4
     assert all(movie["id"] not in {1, 101, 102, 103, 104, 105} for movie in results)
     assert len(results) > 0
+    expanded_pages = [call["page"] for call in calls[4:]]
+    assert all(2 <= page <= 500 for page in expanded_pages)
+    assert any(page > 30 for page in expanded_pages)
 
 
 def test_discovery_passes_structured_filters_to_tmdb(monkeypatch):

@@ -177,6 +177,10 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
 .taste-summary div { display: grid; gap: 4px; }
 .taste-summary span { color: var(--muted); font-size: 12px; }
 .taste-summary button { border: 0; background: transparent; color: var(--accent); }
+.movie-view-tabs { display: flex; gap: 8px; margin: 18px 0 28px; padding: 5px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+.movie-view-tabs button { flex: 1; padding: 11px 14px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-weight: 800; }
+.movie-view-tabs button[aria-selected="true"] { background: var(--panel-soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+.movie-view-tabs button:disabled { cursor: wait; opacity: 0.65; }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
 .rating-progress { display: grid; grid-template-columns: auto minmax(120px, 1fr) auto; align-items: center; gap: 14px; margin: -6px 0 24px; color: var(--muted); font-size: 12px; }
 .rating-progress > div:first-child { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
@@ -186,6 +190,9 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
 .rating-progress-track span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 180ms ease; }
 .movie-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
 .movie-card { overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
+.liked-movie-card { padding: 0; color: var(--text); text-align: left; }
+.liked-movie-card .movie-content { min-height: 88px; }
+.liked-movie-card .movie-content strong { font-size: 17px; }
 .poster-wrap { position: relative; aspect-ratio: 2 / 3; overflow: hidden; background: var(--panel-soft); }
 .poster-image { object-fit: cover; transition: transform 300ms ease; }
 .movie-card:hover .poster-image { transform: scale(1.025); }
@@ -322,6 +329,7 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
   .feedback-row { grid-template-columns: 1fr; }
   .section-heading { align-items: start; }
   .taste-summary { align-items: flex-start; }
+  .movie-view-tabs button { padding-inline: 8px; font-size: 12px; }
   .rating-progress { grid-template-columns: 1fr auto; }
   .rating-progress-track { grid-column: 1 / -1; grid-row: 2; }
   .rating-progress p { text-align: right; }

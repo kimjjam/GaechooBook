@@ -6,7 +6,7 @@ import type {
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/backend";
-const MAX_QUERY_EXCLUDED_MOVIE_IDS = 200;
+const MAX_QUERY_EXCLUDED_MOVIE_IDS = 500;
 
 interface OnboardingInput {
   visitor_token: string;
@@ -118,6 +118,14 @@ export function sendFeedback(
       action,
     }),
   });
+}
+
+export async function getLikedMovies(visitorToken: string): Promise<MovieRecommendation[]> {
+  const result = await apiFetch<{ recommendations: MovieRecommendation[] }>(
+    "/personalization/liked-movies?limit=30",
+    { headers: { "X-Visitor-Token": visitorToken } },
+  );
+  return result.recommendations;
 }
 
 export function sendFeedbackBatch(

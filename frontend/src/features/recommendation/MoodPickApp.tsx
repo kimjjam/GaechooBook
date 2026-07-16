@@ -6,14 +6,15 @@ import { AuthPanel } from "@/features/auth/AuthPanel";
 import { ChatWindow } from "@/features/chat/ChatWindow";
 import type { AuthSession, MovieRecommendation, TasteProfile } from "@/features/chat/types";
 import { OnboardingForm } from "@/features/onboarding/OnboardingForm";
+import { LikedMoviesGrid } from "@/features/recommendation/LikedMoviesGrid";
 import { RecommendationGrid } from "@/features/recommendation/RecommendationGrid";
 import {
+  getLikedMovies,
   getProfile,
   getRecommendations,
   saveOnboarding,
-  sendFeedbackBatch,
+  sendFeedback,
 } from "@/lib/api/personalizationClient";
-import type { FeedbackSelection } from "@/lib/api/personalizationClient";
 import { getAuthSession, logout } from "@/lib/api/authClient";
 
 const VISITOR_TOKEN_KEY = "moodpick_visitor_token";
@@ -21,12 +22,11 @@ const SEEN_MOVIE_IDS_KEY_PREFIX = "moodpick_seen_movie_ids";
 const CARD_RATING_TARGET = 10;
 const VISIBLE_CARD_COUNT = 30;
 const RECOMMENDATION_BATCH_SIZE = 60;
-const FEEDBACK_BATCH_SIZE = 5;
 const VISITOR_TOKEN_MIN_LENGTH = 8;
 const VISITOR_TOKEN_MAX_LENGTH = 64;
 const MAX_TRACKED_MOVIE_IDS = 500;
 type ContentType = "movies" | "books";
-type MovieView = "cards" | "chat";
+type MovieView = "cards" | "chat" | "liked";
 type GenreSignals = Record<string, number>;
 
 function getVisitorToken(): string {
@@ -109,7 +109,7 @@ export function MoodPickApp() {
   const [moviePool, setMoviePool] = useState<MovieRecommendation[]>([]);
   const [seenMovieIds, setSeenMovieIds] = useState<number[]>([]);
   const [seenMovieIdentities, setSeenMovieIdentities] = useState<string[]>([]);
-  const [pendingFeedback, setPendingFeedback] = useState<FeedbackSelection[]>([]);
+  const [likedMovies, setLikedMovies] = useState<MovieRecommendation[]>([]);
   const [movieView, setMovieView] = useState<MovieView>("cards");
   const [isMovieChatUnlocked, setIsMovieChatUnlocked] = useState(false);
   const [isInitialCardRating, setIsInitialCardRating] = useState(false);
@@ -119,6 +119,7 @@ export function MoodPickApp() {
   const [isBooting, setIsBooting] = useState(true);
   const [isContentLoading, setIsContentLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLikedMoviesLoading, setIsLikedMoviesLoading] = useState(false);
   const [isEditingTaste, setIsEditingTaste] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -204,7 +205,6 @@ export function MoodPickApp() {
       setIsInitialCardRating(false);
       setRatedMovieCount(0);
       setMoviePool([]);
-      setPendingFeedback([]);
       setGenreSignals({});
       setMovieOpeningMessage("");
       void loadMovieExperience();
@@ -258,7 +258,6 @@ export function MoodPickApp() {
       setIsMovieChatUnlocked(!isFirstTasteSetup);
       setIsInitialCardRating(isFirstTasteSetup);
       setRatedMovieCount(0);
-      setPendingFeedback([]);
       setGenreSignals({});
       setMovieOpeningMessage("");
       showMovieBatch(
@@ -272,10 +271,20 @@ export function MoodPickApp() {
 
   async function handleFeedback(movie: MovieRecommendation, action: "liked" | "disliked") {
     setError(null);
+    try {
+      await sendFeedback(visitorToken, movie, action, authSession?.csrf_token);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "평가를 저장하지 못했습니다.");
+      return;
+    }
+    setLikedMovies((current) => (
+      action === "liked"
+        ? [movie, ...current.filter((candidate) => candidate.id !== movie.id)]
+        : current.filter((candidate) => candidate.id !== movie.id)
+    ));
     const nextCount = isInitialCardRating
       ? Math.min(ratedMovieCount + 1, CARD_RATING_TARGET)
       : ratedMovieCount;
-    const nextPendingFeedback = [...pendingFeedback, { movie, action }];
     const signalDelta = action === "liked" ? 1 : -1;
     const nextGenreSignals = { ...genreSignals };
     for (const genre of movie.genres) {
@@ -318,21 +327,8 @@ export function MoodPickApp() {
       setMovies(nextVisibleMovies);
       setMoviePool(remainingPool);
     }
-    setPendingFeedback(nextPendingFeedback);
     setRatedMovieCount(nextCount);
     setGenreSignals(nextGenreSignals);
-
-    if (nextPendingFeedback.length >= FEEDBACK_BATCH_SIZE) {
-      const feedbackBatch = nextPendingFeedback.slice(0, FEEDBACK_BATCH_SIZE);
-      try {
-        await sendFeedbackBatch(visitorToken, feedbackBatch, authSession?.csrf_token);
-        setPendingFeedback(nextPendingFeedback.slice(FEEDBACK_BATCH_SIZE));
-
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "평가 묶음을 저장하지 못했습니다.");
-        return;
-      }
-    }
 
     if (isInitialCardRating && nextCount >= CARD_RATING_TARGET) {
       setMovieOpeningMessage(
@@ -377,6 +373,21 @@ export function MoodPickApp() {
     window.scrollTo({ top: 0 });
   }
 
+  async function handleShowLikedMovies() {
+    if (!visitorToken || isLikedMoviesLoading) return;
+    setMovieView("liked");
+    setIsLikedMoviesLoading(true);
+    setError(null);
+    try {
+      setLikedMovies(await getLikedMovies(visitorToken));
+      window.scrollTo({ top: 0 });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "좋아요한 영화를 불러오지 못했습니다.");
+    } finally {
+      setIsLikedMoviesLoading(false);
+    }
+  }
+
   function handleChatMoviesRecommended(recommendedMovies: MovieRecommendation[]) {
     setSeenMovieIds((current) => [
       ...new Set([...current, ...recommendedMovies.map((movie) => movie.id)]),
@@ -402,6 +413,7 @@ export function MoodPickApp() {
     try {
       await logout(authSession.csrf_token);
       setAuthSession(null);
+      setLikedMovies([]);
       if (contentType === "movies") await loadMovieExperience();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "로그아웃하지 못했습니다.");
@@ -502,7 +514,37 @@ export function MoodPickApp() {
             </div>
             <button type="button" onClick={() => setIsEditingTaste(true)}>취향 수정</button>
           </div>
-          <div hidden={movieView !== "cards"}>
+          {isMovieChatUnlocked && (
+            <nav className="movie-view-tabs" aria-label="영화 메뉴" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={movieView === "chat"}
+                onClick={handleReturnToMovieChat}
+              >
+                챗봇 추천
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={movieView === "cards"}
+                onClick={() => void handleShowMovieCards()}
+                disabled={isRefreshing}
+              >
+                {isRefreshing ? "카드 찾는 중…" : "영화 카드"}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={movieView === "liked"}
+                onClick={() => void handleShowLikedMovies()}
+                disabled={isLikedMoviesLoading}
+              >
+                좋아요한 영화
+              </button>
+            </nav>
+          )}
+          <div role="tabpanel" hidden={movieView !== "cards"}>
               <RecommendationGrid
                 movies={movies}
                 isRefreshing={isRefreshing}
@@ -512,15 +554,6 @@ export function MoodPickApp() {
                 onFeedback={handleFeedback}
                 onRefresh={refreshRecommendations}
               />
-              {isMovieChatUnlocked && (
-                <button
-                  className="primary-button chat-return-button"
-                  type="button"
-                  onClick={handleReturnToMovieChat}
-                >
-                  챗봇으로 돌아가기
-                </button>
-              )}
           </div>
           {isMovieChatUnlocked && (
             <section
@@ -544,16 +577,11 @@ export function MoodPickApp() {
                   onMoviesRecommended={handleChatMoviesRecommended}
                 />
               </div>
-              <button
-                className="secondary-button card-return-button"
-                type="button"
-                onClick={() => void handleShowMovieCards()}
-                disabled={isRefreshing}
-              >
-                {isRefreshing ? "새 카드 찾는 중..." : "영화 카드 다시 보기"}
-              </button>
             </section>
           )}
+          <div role="tabpanel" hidden={movieView !== "liked"}>
+            <LikedMoviesGrid movies={likedMovies} isLoading={isLikedMoviesLoading} />
+          </div>
             </>
           )}
         </>

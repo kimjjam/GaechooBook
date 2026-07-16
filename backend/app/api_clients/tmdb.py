@@ -77,6 +77,7 @@ class TMDBClient:
         base_params: dict[str, str | int] = {
             "include_adult": "false",
             "include_video": "false",
+            "primary_release_date.lte": date.today().isoformat(),
         }
         if genre_ids:
             base_params["with_genres"] = "|".join(str(value) for value in genre_ids)
@@ -122,9 +123,12 @@ class TMDBClient:
         # 더 넓은 페이지를 조회해 실제로 새로운 후보를 채운다.
         if blocked_ids:
             page_rng = random.Random(int.from_bytes(digest[:8], "big"))
-            popularity_pages = page_rng.sample(range(2, 31), 4)
-            rating_pages = page_rng.sample(range(2, 21), 2)
-            recent_pages = page_rng.sample(range(2, 21), 2)
+            # TMDB discover는 최대 500페이지까지 탐색할 수 있다. 이미 본 영화가
+            # 많을수록 앞쪽 인기 페이지에만 머물지 않고 전체 카탈로그에서 고르게
+            # 페이지를 뽑아, 오래된 작품과 덜 알려진 작품도 후보에 들어오게 한다.
+            popularity_pages = page_rng.sample(range(2, 501), 8)
+            rating_pages = page_rng.sample(range(2, 501), 4)
+            recent_pages = page_rng.sample(range(2, 501), 4)
             expanded_request_params = [
                 *(
                     {"sort_by": "popularity.desc", "vote_count.gte": 20, "page": page}

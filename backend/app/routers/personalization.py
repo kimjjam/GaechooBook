@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 
@@ -10,6 +12,7 @@ from app.repositories.personalization_repo import (
     feedback_movie_ids,
     get_or_create_user,
     get_profile_for_user,
+    liked_movies_for_user,
     profile_preferences,
     save_feedback,
     save_feedback_batch,
@@ -104,7 +107,7 @@ def get_recommendations(
     http_request: Request,
     visitor_token: str = Header(alias="X-Visitor-Token"),
     limit: int = Query(default=10, ge=1, le=60),
-    exclude_movie_ids: str = Query(default="", max_length=2000),
+    exclude_movie_ids: str = Query(default="", max_length=6000),
 ) -> RecommendationResponse:
     try:
         user = _resolve_user(http_request, visitor_token)
@@ -121,7 +124,8 @@ def get_recommendations(
         saved_exclusions = feedback_movie_ids(user.id)
         all_exclusions = saved_exclusions | requested_exclusions
         diversity_seed = f"{user.id}:{','.join(map(str, sorted(all_exclusions)))}"
-        candidates = TMDBClient().discover_for_genres(
+        client = TMDBClient()
+        candidates = client.discover_for_genres(
             active_genres,
             count=80,
             diversity_seed=diversity_seed,
@@ -135,12 +139,72 @@ def get_recommendations(
             limit,
             confidence=float(profile.confidence_score or 0.45),
         )
+        if len(ranked) < limit:
+            ranked_ids = {int(movie["id"]) for movie in ranked}
+            catalog_exclusions = all_exclusions | ranked_ids
+            catalog_candidates = client.discover_for_genres(
+                [],
+                count=80,
+                diversity_seed=f"{diversity_seed}:all-catalog",
+                excluded_ids=catalog_exclusions,
+            )
+            ranked.extend(
+                rank_movies(
+                    catalog_candidates,
+                    genres,
+                    moods,
+                    catalog_exclusions,
+                    limit - len(ranked),
+                    confidence=float(profile.confidence_score or 0.45),
+                )
+            )
         return RecommendationResponse(
             recommendations=[MovieRecommendation(**movie) for movie in ranked]
         )
     except OracleConnectionError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/liked-movies", response_model=RecommendationResponse)
+def get_liked_movies(
+    http_request: Request,
+    visitor_token: str = Header(alias="X-Visitor-Token"),
+    limit: int = Query(default=30, ge=1, le=50),
+) -> RecommendationResponse:
+    try:
+        user = _resolve_user(http_request, visitor_token)
+        saved_movies = liked_movies_for_user(user.id, limit)
+        client = TMDBClient()
+
+        def hydrate(movie: dict) -> dict:
+            try:
+                details = client.get_movie_details(movie["id"])
+                return {
+                    **details,
+                    "score": 1.0,
+                    "reason": "좋아요한 영화",
+                }
+            except (httpx.HTTPError, RuntimeError, KeyError):
+                return {
+                    **movie,
+                    "overview": "",
+                    "poster_url": None,
+                    "release_year": None,
+                    "rating": 0,
+                    "score": 1.0,
+                    "reason": "좋아요한 영화",
+                }
+
+        if not saved_movies:
+            return RecommendationResponse(recommendations=[])
+        with ThreadPoolExecutor(max_workers=min(8, len(saved_movies))) as executor:
+            hydrated = list(executor.map(hydrate, saved_movies))
+        return RecommendationResponse(
+            recommendations=[MovieRecommendation(**movie) for movie in hydrated]
+        )
+    except OracleConnectionError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 

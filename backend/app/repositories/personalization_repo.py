@@ -248,3 +248,40 @@ def feedback_movie_ids(user_id: int) -> set[int]:
             .all()
         )
         return {int(row[0]) for row in rows}
+
+
+def liked_movies_for_user(user_id: int, limit: int = 30) -> list[dict]:
+    """영화별 가장 최근 평가가 liked인 항목만 최신순으로 반환한다."""
+    with get_session() as session:
+        rows = (
+            session.query(Interaction)
+            .filter(
+                Interaction.user_id == user_id,
+                Interaction.tmdb_movie_id.isnot(None),
+            )
+            .order_by(Interaction.id.desc())
+            .all()
+        )
+        seen_ids: set[int] = set()
+        liked: list[dict] = []
+        for row in rows:
+            movie_id = int(row.tmdb_movie_id)
+            if movie_id in seen_ids:
+                continue
+            seen_ids.add(movie_id)
+            if row.action != "liked":
+                continue
+            liked.append(
+                {
+                    "id": movie_id,
+                    "title": row.movie_title or "제목 미상",
+                    "genres": [
+                        genre.strip()
+                        for genre in (row.movie_genres or "").split(",")
+                        if genre.strip()
+                    ],
+                }
+            )
+            if len(liked) >= limit:
+                break
+        return liked

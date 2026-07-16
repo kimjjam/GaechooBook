@@ -62,9 +62,12 @@ def test_recommendations_exclude_ids_requested_by_client(monkeypatch):
     monkeypatch.setattr(personalization, "feedback_movie_ids", lambda _user_id: {1})
 
     class FakeTMDBClient:
-        def discover_for_genres(self, _genres, count, diversity_seed, excluded_ids=None):
+        def discover_for_genres(self, genres, count, diversity_seed, excluded_ids=None):
             assert count == 80
-            assert diversity_seed == "7:1,2"
+            if genres:
+                assert diversity_seed == "7:1,2"
+            else:
+                assert diversity_seed == "7:1,2:all-catalog"
             return [_movie(1), _movie(2), _movie(3)]
 
     monkeypatch.setattr(personalization, "TMDBClient", FakeTMDBClient)
@@ -119,7 +122,7 @@ def test_feedback_batch_is_saved_in_one_repository_call(monkeypatch):
 def test_recommendations_do_not_send_weak_or_disliked_genres_to_tmdb(monkeypatch):
     user = SimpleNamespace(id=11)
     profile = SimpleNamespace(confidence_score=0.45)
-    captured = {}
+    captured = {"genre_calls": []}
 
     monkeypatch.setattr(personalization, "_resolve_user", lambda *_args, **_kwargs: user)
     monkeypatch.setattr(personalization, "get_profile_for_user", lambda _user_id: profile)
@@ -135,7 +138,7 @@ def test_recommendations_do_not_send_weak_or_disliked_genres_to_tmdb(monkeypatch
 
     class FakeTMDBClient:
         def discover_for_genres(self, genres, count, diversity_seed, excluded_ids=None):
-            captured["genres"] = genres
+            captured["genre_calls"].append(genres)
             return []
 
     monkeypatch.setattr(personalization, "TMDBClient", FakeTMDBClient)
@@ -147,4 +150,64 @@ def test_recommendations_do_not_send_weak_or_disliked_genres_to_tmdb(monkeypatch
         exclude_movie_ids="",
     )
 
-    assert captured["genres"] == ["코미디"]
+    assert captured["genre_calls"] == [["코미디"], []]
+
+
+def test_recommendations_expand_to_all_catalog_when_preferred_genre_is_exhausted(monkeypatch):
+    user = SimpleNamespace(id=12)
+    profile = SimpleNamespace(confidence_score=0.7)
+    calls = []
+    monkeypatch.setattr(personalization, "_resolve_user", lambda *_args, **_kwargs: user)
+    monkeypatch.setattr(personalization, "get_profile_for_user", lambda _user_id: profile)
+    monkeypatch.setattr(personalization, "profile_preferences", lambda _profile: ({"로맨스": 1.0}, {}))
+    monkeypatch.setattr(personalization, "feedback_movie_ids", lambda _user_id: {1})
+
+    class FakeTMDBClient:
+        def discover_for_genres(self, genres, count, diversity_seed, excluded_ids=None):
+            calls.append((genres, excluded_ids))
+            return [] if genres else [_movie(9), _movie(10)]
+
+    monkeypatch.setattr(personalization, "TMDBClient", FakeTMDBClient)
+
+    response = personalization.get_recommendations(
+        http_request=object(),
+        visitor_token="visitor-123",
+        limit=2,
+        exclude_movie_ids="",
+    )
+
+    assert [movie.id for movie in response.recommendations] == [9, 10]
+    assert calls[0][0] == ["로맨스"]
+    assert calls[1][0] == []
+
+
+def test_liked_movies_returns_latest_saved_likes_with_tmdb_details(monkeypatch):
+    user = SimpleNamespace(id=15)
+    monkeypatch.setattr(personalization, "_resolve_user", lambda *_args, **_kwargs: user)
+    monkeypatch.setattr(
+        personalization,
+        "liked_movies_for_user",
+        lambda user_id, limit: [{"id": 44, "title": "저장 제목", "genres": ["드라마"]}],
+    )
+
+    class FakeTMDBClient:
+        def get_movie_details(self, movie_id):
+            return {
+                **_movie(movie_id),
+                "backdrop_url": None,
+                "release_date": "2026-01-01",
+                "runtime": 110,
+                "tagline": None,
+                "trailer_url": None,
+            }
+
+    monkeypatch.setattr(personalization, "TMDBClient", FakeTMDBClient)
+
+    response = personalization.get_liked_movies(
+        http_request=object(),
+        visitor_token="visitor-123",
+        limit=30,
+    )
+
+    assert [movie.id for movie in response.recommendations] == [44]
+    assert response.recommendations[0].reason == "좋아요한 영화"
