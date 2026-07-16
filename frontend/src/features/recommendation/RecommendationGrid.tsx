@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
 
 import type { MovieRecommendation } from "@/features/chat/types";
 
@@ -11,7 +10,7 @@ interface RecommendationGridProps {
   ratedCount: number;
   ratingTarget: number;
   showRatingProgress: boolean;
-  onFeedback: (movie: MovieRecommendation, action: "liked" | "disliked") => Promise<void>;
+  onFeedback: (movie: MovieRecommendation, action: "liked" | "disliked") => void;
   onRefresh: () => Promise<void>;
 }
 
@@ -24,17 +23,6 @@ export function RecommendationGrid({
   onFeedback,
   onRefresh,
 }: RecommendationGridProps) {
-  const [savingMovieId, setSavingMovieId] = useState<number | null>(null);
-
-  async function handleFeedback(movie: MovieRecommendation, action: "liked" | "disliked") {
-    setSavingMovieId(movie.id);
-    try {
-      await onFeedback(movie, action);
-    } finally {
-      setSavingMovieId(null);
-    }
-  }
-
   return (
     <section aria-labelledby="recommendation-title">
       <div className="section-heading">
@@ -95,16 +83,16 @@ export function RecommendationGrid({
                 <div className="feedback-row" aria-label={`${movie.title} 평가`}>
                   <button
                     type="button"
-                    disabled={savingMovieId !== null || isRefreshing}
-                    onClick={() => handleFeedback(movie, "liked")}
+                    disabled={isRefreshing}
+                    onClick={() => onFeedback(movie, "liked")}
                     aria-label={`${movie.title} 좋아요`}
                   >
                     👍 취향이에요
                   </button>
                   <button
                     type="button"
-                    disabled={savingMovieId !== null || isRefreshing}
-                    onClick={() => handleFeedback(movie, "disliked")}
+                    disabled={isRefreshing}
+                    onClick={() => onFeedback(movie, "disliked")}
                     aria-label={`${movie.title} 싫어요`}
                   >
                     👎 다음엔 빼기

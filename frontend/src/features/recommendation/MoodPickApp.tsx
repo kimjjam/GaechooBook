@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { AuthPanel } from "@/features/auth/AuthPanel";
 import { ChatWindow } from "@/features/chat/ChatWindow";
@@ -22,6 +22,7 @@ const SEEN_MOVIE_IDS_KEY_PREFIX = "moodpick_seen_movie_ids";
 const CARD_RATING_TARGET = 10;
 const VISIBLE_CARD_COUNT = 30;
 const RECOMMENDATION_BATCH_SIZE = 60;
+const MOVIE_POOL_PREFETCH_THRESHOLD = 25;
 const VISITOR_TOKEN_MIN_LENGTH = 8;
 const VISITOR_TOKEN_MAX_LENGTH = 64;
 const MAX_TRACKED_MOVIE_IDS = 500;
@@ -123,6 +124,9 @@ export function MoodPickApp() {
   const [isEditingTaste, setIsEditingTaste] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isPoolRefillingRef = useRef(false);
+  const feedbackWriteChainRef = useRef<Promise<void>>(Promise.resolve());
+  const feedbackWritesRef = useRef<Set<Promise<unknown>>>(new Set());
 
   function showMovieBatch(nextMovies: MovieRecommendation[]) {
     const knownIds = new Set(seenMovieIds);
@@ -269,14 +273,52 @@ export function MoodPickApp() {
     }
   }
 
-  async function handleFeedback(movie: MovieRecommendation, action: "liked" | "disliked") {
-    setError(null);
+  async function refillMoviePool() {
+    if (!visitorToken || isPoolRefillingRef.current) return;
+    isPoolRefillingRef.current = true;
     try {
-      await sendFeedback(visitorToken, movie, action, authSession?.csrf_token);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "평가를 저장하지 못했습니다.");
-      return;
+      const candidates = await getRecommendations(
+        visitorToken,
+        seenMovieIds,
+        RECOMMENDATION_BATCH_SIZE,
+      );
+      const knownIds = new Set(seenMovieIds);
+      const knownIdentities = new Set(seenMovieIdentities);
+      const uniqueCandidates = uniqueMovieBatch(candidates, knownIds, knownIdentities);
+      setMoviePool((current) => {
+        const currentIds = new Set(current.map((candidate) => candidate.id));
+        return [
+          ...current,
+          ...uniqueCandidates.filter((candidate) => !currentIds.has(candidate.id)),
+        ];
+      });
+      setSeenMovieIds([...knownIds].slice(-MAX_TRACKED_MOVIE_IDS));
+      setSeenMovieIdentities([...knownIdentities]);
+    } catch {
+      // 현재 풀의 카드는 계속 사용할 수 있으므로 다음 평가 때 조용히 재시도한다.
+    } finally {
+      isPoolRefillingRef.current = false;
     }
+  }
+
+  function persistFeedback(movie: MovieRecommendation, action: "liked" | "disliked") {
+    const write = feedbackWriteChainRef.current
+      .then(() => sendFeedback(visitorToken, movie, action, authSession?.csrf_token))
+      .then(() => undefined);
+    feedbackWriteChainRef.current = write.catch(() => undefined);
+    feedbackWritesRef.current.add(write);
+    void write
+      .catch((caught) => {
+        setError(caught instanceof Error ? caught.message : "평가를 저장하지 못했습니다.");
+      })
+      .finally(() => {
+        feedbackWritesRef.current.delete(write);
+      });
+  }
+
+  function handleFeedback(movie: MovieRecommendation, action: "liked" | "disliked") {
+    setError(null);
+    persistFeedback(movie, action);
     setLikedMovies((current) => (
       action === "liked"
         ? [movie, ...current.filter((candidate) => candidate.id !== movie.id)]
@@ -291,41 +333,17 @@ export function MoodPickApp() {
       nextGenreSignals[genre] = (nextGenreSignals[genre] ?? 0) + signalDelta;
     }
 
-    let nextVisibleMovies = movies;
     let remainingPool = moviePool;
     if (!isInitialCardRating || isMovieChatUnlocked || nextCount < CARD_RATING_TARGET) {
       let [replacement, ...nextPool] = moviePool;
       if (!replacement) {
-        try {
-          const replacementCandidates = await getRecommendations(
-            visitorToken,
-            seenMovieIds,
-            RECOMMENDATION_BATCH_SIZE,
-          );
-          const knownIds = new Set(seenMovieIds);
-          const knownIdentities = new Set(seenMovieIdentities);
-          const uniqueReplacements = uniqueMovieBatch(
-            replacementCandidates,
-            knownIds,
-            knownIdentities,
-          );
-          setSeenMovieIds([...knownIds].slice(-MAX_TRACKED_MOVIE_IDS));
-          setSeenMovieIdentities([...knownIdentities]);
-          [replacement, ...nextPool] = uniqueReplacements;
-        } catch (caught) {
-          setError(caught instanceof Error ? caught.message : "새 영화를 불러오지 못했습니다.");
-          return;
-        }
+        void refillMoviePool();
+      } else {
+        const remainingMovies = movies.filter((candidate) => candidate.id !== movie.id);
+        setMovies([...remainingMovies, replacement]);
+        remainingPool = nextPool;
+        setMoviePool(remainingPool);
       }
-      if (!replacement) {
-        setError("새 영화를 준비하지 못해 현재 카드를 유지했어요. 다시 시도해 주세요.");
-        return;
-      }
-      const remainingMovies = movies.filter((candidate) => candidate.id !== movie.id);
-      nextVisibleMovies = [...remainingMovies, replacement];
-      remainingPool = nextPool;
-      setMovies(nextVisibleMovies);
-      setMoviePool(remainingPool);
     }
     setRatedMovieCount(nextCount);
     setGenreSignals(nextGenreSignals);
@@ -338,6 +356,9 @@ export function MoodPickApp() {
       setIsInitialCardRating(false);
       setMovieView("chat");
       window.scrollTo({ top: 0 });
+    }
+    if (remainingPool.length <= MOVIE_POOL_PREFETCH_THRESHOLD) {
+      void refillMoviePool();
     }
   }
 
@@ -379,6 +400,7 @@ export function MoodPickApp() {
     setIsLikedMoviesLoading(true);
     setError(null);
     try {
+      await Promise.allSettled([...feedbackWritesRef.current]);
       setLikedMovies(await getLikedMovies(visitorToken));
       window.scrollTo({ top: 0 });
     } catch (caught) {
