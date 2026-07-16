@@ -466,7 +466,7 @@ export function MoodPickApp() {
         </section>
       ) : contentType === "books" ? (
         <>
-          <header className="hero content-hero">
+          <header className="hero content-hero book-content-hero">
             <button className="back-button" type="button" onClick={handleBackToPicker}>← 영화 · 도서 다시 선택</button>
             <h1>지금 마음에 맞는 책,<br />함께 찾아드릴게요.</h1>
             <p>여러 도서 검색 결과를 한곳에서 비교해 추천합니다.</p>
