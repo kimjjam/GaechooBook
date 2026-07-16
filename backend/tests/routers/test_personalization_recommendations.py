@@ -256,6 +256,39 @@ def test_recommendations_require_only_two_strongest_genres_first(monkeypatch):
     assert calls[0] == (["로맨스", "코미디"], True)
 
 
+def test_recommendations_return_viable_batch_without_extra_tmdb_rounds(monkeypatch):
+    user = SimpleNamespace(id=17)
+    profile = SimpleNamespace(confidence_score=0.7)
+    calls = []
+    monkeypatch.setattr(personalization, "_resolve_user", lambda *_args, **_kwargs: user)
+    monkeypatch.setattr(personalization, "get_profile_for_user", lambda _user_id: profile)
+    monkeypatch.setattr(
+        personalization,
+        "profile_preferences",
+        lambda _profile: ({"로맨스": 1.4, "코미디": 1.1}, {}),
+    )
+    monkeypatch.setattr(personalization, "feedback_movie_ids", lambda _user_id: set())
+
+    class FakeTMDBClient:
+        def discover_for_genres(
+            self, genres, count, diversity_seed, excluded_ids=None, require_all_genres=False,
+        ):
+            calls.append((genres, require_all_genres))
+            return [_movie(movie_id) for movie_id in range(1, 26)]
+
+    monkeypatch.setattr(personalization, "TMDBClient", FakeTMDBClient)
+
+    response = personalization.get_recommendations(
+        http_request=object(),
+        visitor_token="visitor-123",
+        limit=60,
+        exclude_movie_ids="",
+    )
+
+    assert len(response.recommendations) == 25
+    assert calls == [(["로맨스", "코미디"], True)]
+
+
 def test_recommendations_try_either_primary_genre_before_other_preferences(monkeypatch):
     user = SimpleNamespace(id=16)
     profile = SimpleNamespace(confidence_score=0.7)

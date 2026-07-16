@@ -149,6 +149,11 @@ def get_recommendations(
             limit,
             confidence=float(profile.confidence_score or 0.45),
         )
+        minimum_viable_count = min(limit, 20)
+        if len(ranked) >= minimum_viable_count:
+            return RecommendationResponse(
+                recommendations=[MovieRecommendation(**movie) for movie in ranked]
+            )
         if len(ranked) < limit and len(primary_genres) > 1:
             ranked_ids = {int(movie["id"]) for movie in ranked}
             partial_match_exclusions = all_exclusions | ranked_ids
@@ -169,6 +174,10 @@ def get_recommendations(
                     confidence=float(profile.confidence_score or 0.45),
                 )
             )
+            if len(ranked) >= minimum_viable_count:
+                return RecommendationResponse(
+                    recommendations=[MovieRecommendation(**movie) for movie in ranked]
+                )
         if len(ranked) < limit and set(active_genres) != set(primary_genres):
             ranked_ids = {int(movie["id"]) for movie in ranked}
             preferred_exclusions = all_exclusions | ranked_ids
@@ -189,6 +198,10 @@ def get_recommendations(
                     confidence=float(profile.confidence_score or 0.45),
                 )
             )
+            if len(ranked) >= minimum_viable_count:
+                return RecommendationResponse(
+                    recommendations=[MovieRecommendation(**movie) for movie in ranked]
+                )
         if len(ranked) < limit:
             ranked_ids = {int(movie["id"]) for movie in ranked}
             catalog_exclusions = all_exclusions | ranked_ids
