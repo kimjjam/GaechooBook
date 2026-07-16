@@ -34,13 +34,26 @@ async function forward(
   }
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
-  const backendResponse = await fetch(target, {
-    method: request.method,
-    headers,
-    body: hasBody ? await request.arrayBuffer() : undefined,
-    cache: "no-store",
-    redirect: "manual",
-  });
+  let backendResponse: Response;
+  try {
+    backendResponse = await fetch(target, {
+      method: request.method,
+      headers,
+      body: hasBody ? await request.arrayBuffer() : undefined,
+      cache: "no-store",
+      redirect: "manual",
+    });
+  } catch (error) {
+    console.error("[api/backend] backend request failed", {
+      method: request.method,
+      path: target.pathname,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return Response.json(
+      { detail: "백엔드 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요." },
+      { status: 502 },
+    );
+  }
 
   const responseHeaders = new Headers(backendResponse.headers);
   responseHeaders.delete("content-encoding");

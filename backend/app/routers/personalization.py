@@ -216,6 +216,11 @@ def get_recommendations(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="영화 정보 제공자에 일시적으로 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+        ) from exc
 
 
 @router.get("/liked-movies", response_model=RecommendationResponse)

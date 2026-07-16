@@ -5,6 +5,7 @@
 반환하게 하기 위함.
 """
 import hashlib
+import logging
 import os
 import random
 from concurrent.futures import ThreadPoolExecutor
@@ -16,6 +17,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 _BASE_URL = "https://api.themoviedb.org/3"
+logger = logging.getLogger(__name__)
 
 # TMDB 공식 영화 장르표 (움직이지 않는 고정 목록이라 매 요청마다 조회하지 않고 상수로 둔다)
 _GENRE_MAP = {
@@ -105,8 +107,28 @@ class TMDBClient:
 
         def collect(request_params: list[dict[str, str | int]]) -> bool:
             queries = [{**base_params, **query_params} for query_params in request_params]
+            responses: list[dict] = []
+            request_errors: list[httpx.HTTPError] = []
             with ThreadPoolExecutor(max_workers=min(8, len(queries))) as executor:
-                responses = list(executor.map(lambda params: self._get("/discover/movie", params), queries))
+                futures = [
+                    executor.submit(self._get, "/discover/movie", params)
+                    for params in queries
+                ]
+                for params, future in zip(queries, futures):
+                    try:
+                        responses.append(future.result())
+                    except httpx.HTTPError as exc:
+                        request_errors.append(exc)
+                        logger.warning(
+                            "TMDB discovery request failed; continuing with remaining pages",
+                            extra={
+                                "sort_by": params.get("sort_by"),
+                                "page": params.get("page"),
+                                "error": str(exc),
+                            },
+                        )
+            if not responses and request_errors:
+                raise request_errors[0]
             for data in responses:
                 for item in data.get("results", []):
                     movie_id = item.get("id")

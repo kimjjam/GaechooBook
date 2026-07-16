@@ -1,3 +1,5 @@
+import httpx
+
 from app.api_clients.tmdb import TMDBClient
 
 
@@ -79,6 +81,37 @@ def test_discovery_expands_pages_when_exclusions_exhaust_initial_candidates(monk
     expanded_pages = [call["page"] for call in calls[4:]]
     assert all(2 <= page <= 500 for page in expanded_pages)
     assert any(page > 30 for page in expanded_pages)
+
+
+def test_discovery_keeps_results_when_one_tmdb_page_fails(monkeypatch):
+    client = TMDBClient(api_key="test")
+
+    def fake_get(_path, params):
+        if params["sort_by"] == "vote_average.desc":
+            raise httpx.ReadTimeout("TMDB timed out")
+        return {"results": [_movie(params["page"])]}
+
+    monkeypatch.setattr(client, "_get", fake_get)
+
+    results = client.discover_for_genres([], count=10, diversity_seed="partial-failure")
+
+    assert len(results) > 0
+
+
+def test_discovery_raises_upstream_error_when_every_tmdb_page_fails(monkeypatch):
+    client = TMDBClient(api_key="test")
+    monkeypatch.setattr(
+        client,
+        "_get",
+        lambda _path, _params: (_ for _ in ()).throw(httpx.ReadTimeout("TMDB timed out")),
+    )
+
+    try:
+        client.discover_for_genres([], count=10)
+    except httpx.ReadTimeout:
+        pass
+    else:
+        raise AssertionError("all-page failure must be reported to the caller")
 
 
 def test_discovery_passes_structured_filters_to_tmdb(monkeypatch):
