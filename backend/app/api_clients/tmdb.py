@@ -71,6 +71,7 @@ class TMDBClient:
         diversity_seed: str | int | None = None,
         filters: dict[str, str | int | float] | None = None,
         excluded_ids: set[int] | None = None,
+        require_all_genres: bool = False,
     ) -> list[dict]:
         """선호 장르 안에서 인기작, 평점작, 최신작을 다양하게 가져온다."""
         genre_ids = [_GENRE_ID_BY_NAME[name] for name in genres if name in _GENRE_ID_BY_NAME]
@@ -80,7 +81,8 @@ class TMDBClient:
             "primary_release_date.lte": date.today().isoformat(),
         }
         if genre_ids:
-            base_params["with_genres"] = "|".join(str(value) for value in genre_ids)
+            delimiter = "," if require_all_genres else "|"
+            base_params["with_genres"] = delimiter.join(str(value) for value in genre_ids)
         if filters:
             base_params.update(filters)
 

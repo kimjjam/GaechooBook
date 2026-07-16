@@ -130,6 +130,7 @@ def get_recommendations(
             count=80,
             diversity_seed=diversity_seed,
             excluded_ids=all_exclusions,
+            require_all_genres=len(active_genres) > 1,
         )
         ranked = rank_movies(
             candidates,
@@ -139,6 +140,26 @@ def get_recommendations(
             limit,
             confidence=float(profile.confidence_score or 0.45),
         )
+        if len(ranked) < limit and len(active_genres) > 1:
+            ranked_ids = {int(movie["id"]) for movie in ranked}
+            partial_match_exclusions = all_exclusions | ranked_ids
+            partial_match_candidates = client.discover_for_genres(
+                active_genres,
+                count=80,
+                diversity_seed=f"{diversity_seed}:any-preferred-genre",
+                excluded_ids=partial_match_exclusions,
+                require_all_genres=False,
+            )
+            ranked.extend(
+                rank_movies(
+                    partial_match_candidates,
+                    genres,
+                    moods,
+                    partial_match_exclusions,
+                    limit - len(ranked),
+                    confidence=float(profile.confidence_score or 0.45),
+                )
+            )
         if len(ranked) < limit:
             ranked_ids = {int(movie["id"]) for movie in ranked}
             catalog_exclusions = all_exclusions | ranked_ids
@@ -147,6 +168,7 @@ def get_recommendations(
                 count=80,
                 diversity_seed=f"{diversity_seed}:all-catalog",
                 excluded_ids=catalog_exclusions,
+                require_all_genres=False,
             )
             ranked.extend(
                 rank_movies(

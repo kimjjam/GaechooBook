@@ -62,7 +62,9 @@ def test_recommendations_exclude_ids_requested_by_client(monkeypatch):
     monkeypatch.setattr(personalization, "feedback_movie_ids", lambda _user_id: {1})
 
     class FakeTMDBClient:
-        def discover_for_genres(self, genres, count, diversity_seed, excluded_ids=None):
+        def discover_for_genres(
+            self, genres, count, diversity_seed, excluded_ids=None, require_all_genres=False,
+        ):
             assert count == 80
             if genres:
                 assert diversity_seed == "7:1,2"
@@ -137,8 +139,10 @@ def test_recommendations_do_not_send_weak_or_disliked_genres_to_tmdb(monkeypatch
     monkeypatch.setattr(personalization, "feedback_movie_ids", lambda _user_id: set())
 
     class FakeTMDBClient:
-        def discover_for_genres(self, genres, count, diversity_seed, excluded_ids=None):
-            captured["genre_calls"].append(genres)
+        def discover_for_genres(
+            self, genres, count, diversity_seed, excluded_ids=None, require_all_genres=False,
+        ):
+            captured["genre_calls"].append((genres, require_all_genres))
             return []
 
     monkeypatch.setattr(personalization, "TMDBClient", FakeTMDBClient)
@@ -150,7 +154,7 @@ def test_recommendations_do_not_send_weak_or_disliked_genres_to_tmdb(monkeypatch
         exclude_movie_ids="",
     )
 
-    assert captured["genre_calls"] == [["코미디"], []]
+    assert captured["genre_calls"] == [(["코미디"], False), ([], False)]
 
 
 def test_recommendations_expand_to_all_catalog_when_preferred_genre_is_exhausted(monkeypatch):
@@ -163,8 +167,10 @@ def test_recommendations_expand_to_all_catalog_when_preferred_genre_is_exhausted
     monkeypatch.setattr(personalization, "feedback_movie_ids", lambda _user_id: {1})
 
     class FakeTMDBClient:
-        def discover_for_genres(self, genres, count, diversity_seed, excluded_ids=None):
-            calls.append((genres, excluded_ids))
+        def discover_for_genres(
+            self, genres, count, diversity_seed, excluded_ids=None, require_all_genres=False,
+        ):
+            calls.append((genres, excluded_ids, require_all_genres))
             return [] if genres else [_movie(9), _movie(10)]
 
     monkeypatch.setattr(personalization, "TMDBClient", FakeTMDBClient)
@@ -179,6 +185,43 @@ def test_recommendations_expand_to_all_catalog_when_preferred_genre_is_exhausted
     assert [movie.id for movie in response.recommendations] == [9, 10]
     assert calls[0][0] == ["로맨스"]
     assert calls[1][0] == []
+
+
+def test_recommendations_relax_from_all_to_any_preferred_genre(monkeypatch):
+    user = SimpleNamespace(id=13)
+    profile = SimpleNamespace(confidence_score=0.7)
+    calls = []
+    monkeypatch.setattr(personalization, "_resolve_user", lambda *_args, **_kwargs: user)
+    monkeypatch.setattr(personalization, "get_profile_for_user", lambda _user_id: profile)
+    monkeypatch.setattr(
+        personalization,
+        "profile_preferences",
+        lambda _profile: ({"로맨스": 1.0, "코미디": 0.9}, {}),
+    )
+    monkeypatch.setattr(personalization, "feedback_movie_ids", lambda _user_id: set())
+
+    class FakeTMDBClient:
+        def discover_for_genres(
+            self, genres, count, diversity_seed, excluded_ids=None, require_all_genres=False,
+        ):
+            calls.append((genres, require_all_genres))
+            if require_all_genres:
+                return [_movie(20)]
+            if genres:
+                return [_movie(21), _movie(22)]
+            return []
+
+    monkeypatch.setattr(personalization, "TMDBClient", FakeTMDBClient)
+
+    response = personalization.get_recommendations(
+        http_request=object(),
+        visitor_token="visitor-123",
+        limit=3,
+        exclude_movie_ids="",
+    )
+
+    assert [movie.id for movie in response.recommendations] == [20, 21, 22]
+    assert calls[:2] == [(["로맨스", "코미디"], True), (["로맨스", "코미디"], False)]
 
 
 def test_liked_movies_returns_latest_saved_likes_with_tmdb_details(monkeypatch):

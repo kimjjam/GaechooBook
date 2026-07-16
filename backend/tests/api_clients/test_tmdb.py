@@ -104,6 +104,23 @@ def test_discovery_passes_structured_filters_to_tmdb(monkeypatch):
     assert all(call["with_genres"] == "10749" for call in calls)
 
 
+def test_discovery_can_require_all_selected_genres(monkeypatch):
+    client = TMDBClient(api_key="test")
+    calls = []
+    monkeypatch.setattr(
+        client,
+        "_get",
+        lambda _path, params: calls.append(params) or {"results": []},
+    )
+
+    client.discover_for_genres(
+        ["로맨스", "코미디"],
+        require_all_genres=True,
+    )
+
+    assert all(call["with_genres"] == "10749,35" for call in calls)
+
+
 def test_similar_movie_recommendations_use_search_result(monkeypatch):
     client = TMDBClient(api_key="test")
     calls = []
