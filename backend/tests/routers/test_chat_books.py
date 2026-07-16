@@ -24,6 +24,41 @@ def test_book_recommendation_uses_live_integrated_search(monkeypatch):
 
     response = chat._handle_recommend("해리포터 책 검색해줘", "visitor")
 
-    assert captured == {"query": "해리포터", "size": 5, "limit": 6}
-    assert "해리 포터와 마법사의 돌" in response.reply
+    assert captured == {"query": "해리포터", "size": 5, "limit": 5}
+    assert response.reply == "취향을 반영해 책 1권을 골랐어요. 카드를 눌러 간단히 살펴보세요. 일부 제공자(카카오)의 결과는 제외됐어요."
     assert response.data["failed_providers"] == ["카카오"]
+
+
+def test_preference_search_relaxes_query_and_fills_five_cards(monkeypatch):
+    calls = []
+
+    def fake_search(query: str, size_per_provider: int, limit: int) -> BookSearchResult:
+        calls.append(query)
+        count = 1 if "," in query else 5
+        return BookSearchResult(
+            books=[
+                {
+                    "title": f"과학책 {index}",
+                    "author": "과학 저자",
+                    "isbn": f"97812345678{index:02d}",
+                    "sources": ["Google Books"],
+                }
+                for index in range(count)
+            ],
+            successful_providers=["Google Books"],
+            failed_providers=[],
+        )
+
+    monkeypatch.setattr(chat, "search_books", fake_search)
+
+    response = chat._handle_recommend(
+        "책 추천: 과학기술, 새로운 지식, 가볍고 편하게, 실용적인 지식과 탐구",
+        "visitor",
+    )
+
+    assert calls == [
+        "과학기술, 새로운 지식, 가볍고 편하게, 실용적인 지식과 탐구",
+        "과학기술",
+    ]
+    assert len(response.data["books"]) == 5
+    assert response.reply.startswith("취향을 반영해 책 5권")

@@ -1,6 +1,8 @@
 """발화 수신 → 분류 → 라우팅. 각 intent의 실제 처리 로직은 스텁이며,
 2~5단계에서 core/scoring, nl2sql, visualize 파이프라인으로 교체된다.
 """
+import re
+
 from fastapi import APIRouter, HTTPException, Request
 
 from app.api_clients.book_search import search_books
@@ -44,6 +46,7 @@ _BOOK_QUERY_NOISE = (
     "보여 줘", "보여줘", "읽고 싶어", "읽고싶어", "읽을 만한", "읽을만한",
     "추천", "검색", "책", "도서",
 )
+_BOOK_RECOMMENDATION_LIMIT = 5
 
 
 def _extract_genre_keyword(message: str) -> str | None:
@@ -61,6 +64,62 @@ def _extract_book_query(message: str, genre: str | None) -> str:
     return query if len(query) >= 2 else (genre or "베스트셀러")
 
 
+def _book_identity(book: dict) -> tuple[str, ...]:
+    isbn = re.sub(r"[^0-9X]", "", str(book.get("isbn") or "").upper())
+    if len(isbn) in (10, 13):
+        return ("isbn", isbn)
+    title = " ".join(str(book.get("title") or "").casefold().split())
+    author = " ".join(str(book.get("author") or "").casefold().split())
+    return ("title", title, author)
+
+
+def _search_recommended_books(book_query: str):
+    """취향 문장이 너무 구체적이면 첫 조건으로 한 번 완화해 5권을 채운다."""
+    results = [
+        search_books(
+            book_query,
+            size_per_provider=5,
+            limit=_BOOK_RECOMMENDATION_LIMIT,
+        )
+    ]
+    if len(results[0].books) < _BOOK_RECOMMENDATION_LIMIT and "," in book_query:
+        fallback_query = book_query.split(",", 1)[0].strip()
+        if len(fallback_query) >= 2:
+            results.append(
+                search_books(
+                    fallback_query,
+                    size_per_provider=5,
+                    limit=_BOOK_RECOMMENDATION_LIMIT,
+                )
+            )
+
+    books: list[dict] = []
+    seen: set[tuple[str, ...]] = set()
+    for result in results:
+        for book in result.books:
+            identity = _book_identity(book)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            books.append(book)
+            if len(books) >= _BOOK_RECOMMENDATION_LIMIT:
+                break
+        if len(books) >= _BOOK_RECOMMENDATION_LIMIT:
+            break
+
+    successful_providers = list(dict.fromkeys(
+        provider for result in results for provider in result.successful_providers
+    ))
+    failed_providers = [
+        provider
+        for provider in dict.fromkeys(
+            provider for result in results for provider in result.failed_providers
+        )
+        if provider not in successful_providers
+    ]
+    return books, successful_providers, failed_providers
+
+
 def _handle_recommend(
     message: str,
     session_id: str,
@@ -74,10 +133,9 @@ def _handle_recommend(
     try:
         if wants_books:
             book_query = _extract_book_query(message, genre)
-            search_result = search_books(book_query, size_per_provider=5, limit=6)
-            books = search_result.books
+            books, successful_providers, failed_providers = _search_recommended_books(book_query)
             if not books:
-                failed = ", ".join(search_result.failed_providers)
+                failed = ", ".join(failed_providers)
                 detail = f" 응답하지 않은 제공자: {failed}." if failed else ""
                 return ChatResponse(
                     intent=Intent.RECOMMEND,
@@ -85,21 +143,15 @@ def _handle_recommend(
                     data={
                         "query": book_query,
                         "books": [],
-                        "providers": search_result.successful_providers,
-                        "failed_providers": search_result.failed_providers,
+                        "providers": successful_providers,
+                        "failed_providers": failed_providers,
                     },
                 )
-            lines = []
-            for book in books:
-                author = book.get("author") or "저자 미상"
-                year = f", {book['pub_year']}" if book.get("pub_year") else ""
-                sources = " · ".join(book.get("sources", []))
-                lines.append(f"- {book['title']} ({author}{year}) [{sources}]")
             data = {
                 "query": book_query,
                 "books": books,
-                "providers": search_result.successful_providers,
-                "failed_providers": search_result.failed_providers,
+                "providers": successful_providers,
+                "failed_providers": failed_providers,
             }
         else:
             parsed = parse_recommendation_query(message, recommendation_context)
@@ -183,10 +235,9 @@ def _handle_recommend(
         return ChatResponse(intent=Intent.RECOMMEND, reply=f"영화 정보를 가져오지 못했습니다: {exc}")
 
     if wants_books:
-        prefix = f"'{book_query}' 통합 도서 검색 결과예요.\n"
+        reply = f"취향을 반영해 책 {len(data['books'])}권을 골랐어요. 카드를 눌러 간단히 살펴보세요."
         if data["failed_providers"]:
-            prefix += f"(현재 응답하지 않은 제공자: {', '.join(data['failed_providers'])})\n"
-        reply = prefix + "\n".join(lines)
+            reply += f" 일부 제공자({', '.join(data['failed_providers'])})의 결과는 제외됐어요."
     else:
         reply = f"{data['applied_filters']} 조건과 저장된 취향을 함께 반영했어요. 카드를 누르면 상세 정보와 예고편을 볼 수 있어요."
         if data.get("learned_genre"):

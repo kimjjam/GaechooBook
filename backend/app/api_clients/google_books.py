@@ -27,6 +27,10 @@ class GoogleBooksClient:
             params["key"] = self.api_key
 
         response = httpx.get(_BASE_URL, params=params, timeout=10)
+        if response.status_code in {400, 403} and "key" in params:
+            # 키 제한 설정이 잘못되어도 Google Books 공개 검색으로 한 번 복구한다.
+            params.pop("key")
+            response = httpx.get(_BASE_URL, params=params, timeout=10)
         response.raise_for_status()
 
         books = []

@@ -55,3 +55,35 @@ def test_search_books_keeps_results_when_one_provider_fails(monkeypatch):
     assert [book["title"] for book in result.books] == ["살아남은 결과"]
     assert result.successful_providers == ["Google Books"]
     assert result.failed_providers == ["네이버"]
+
+
+def test_search_books_interleaves_multiple_provider_results(monkeypatch):
+    def provider(name: str):
+        def search(_query: str, _size: int) -> list[dict]:
+            return [
+                {"title": f"{name} 추천 {index}", "source": name}
+                for index in range(2)
+            ]
+
+        return search
+
+    monkeypatch.setattr(
+        book_search,
+        "_provider_searchers",
+        lambda: [
+            ("네이버", provider("네이버")),
+            ("알라딘", provider("알라딘")),
+            ("Google Books", provider("Google Books")),
+            ("카카오", provider("카카오")),
+        ],
+    )
+
+    result = book_search.search_books("과학", size_per_provider=5, limit=5)
+
+    assert [book["sources"][0] for book in result.books] == [
+        "네이버",
+        "알라딘",
+        "Google Books",
+        "카카오",
+        "네이버",
+    ]

@@ -13,6 +13,13 @@ interface BookDetailModalProps {
   onClose: () => void;
 }
 
+function summarizeDescription(description?: string | null): string {
+  if (!description) return "등록된 책 소개가 아직 없어요.";
+  const normalized = description.replace(/\s+/g, " ").trim();
+  if (normalized.length <= 240) return normalized;
+  return `${normalized.slice(0, 240).trimEnd()}…`;
+}
+
 function BookCover({ book, large = false }: { book: BookRecommendation; large?: boolean }) {
   if (book.thumbnail_url) {
     return (
@@ -66,7 +73,7 @@ function BookDetailModal({ book, onClose }: BookDetailModalProps) {
             {book.pub_year && <span>{book.pub_year}</span>}
             {book.isbn && <span>ISBN {book.isbn}</span>}
           </div>
-          <p className="movie-detail-overview">{book.description || "등록된 책 소개가 아직 없어요."}</p>
+          <p className="movie-detail-overview">{summarizeDescription(book.description)}</p>
           <p className="book-modal-sources">정보 제공: {book.sources.join(" · ")}</p>
           {book.link && (
             <a className="book-detail-link" href={book.link} target="_blank" rel="noreferrer">
@@ -81,11 +88,12 @@ function BookDetailModal({ book, onClose }: BookDetailModalProps) {
 
 export function ChatBookCards({ books }: ChatBookCardsProps) {
   const [selectedBook, setSelectedBook] = useState<BookRecommendation | null>(null);
+  const visibleBooks = books.slice(0, 5);
 
   return (
     <>
       <div className="chat-book-cards" aria-label="추천 도서 카드">
-        {books.map((book, index) => (
+        {visibleBooks.map((book, index) => (
           <button
             className="chat-book-card"
             key={`${book.isbn || book.title}-${index}`}
@@ -98,6 +106,7 @@ export function ChatBookCards({ books }: ChatBookCardsProps) {
               <strong>{book.title}</strong>
               <small>{book.author || "저자 미상"}</small>
               <em>{[book.publisher, book.pub_year].filter(Boolean).join(" · ") || book.sources.join(" · ")}</em>
+              <span className="book-source-badge">출처 {book.sources.join(" · ")}</span>
             </span>
           </button>
         ))}

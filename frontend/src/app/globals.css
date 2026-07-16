@@ -277,6 +277,7 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
 .chat-book-copy strong { display: -webkit-box; overflow: hidden; font-size: 14px; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .chat-book-copy small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .chat-book-copy em { color: #aebcff; font-size: 10px; font-style: normal; line-height: 1.4; }
+.book-source-badge { align-self: flex-start; padding: 3px 6px; border: 1px solid rgba(135, 156, 255, 0.28); border-radius: 999px; color: #aebcff; font-size: 9px; line-height: 1.2; }
 .book-modal { position: relative; display: grid; width: min(760px, 94vw); max-height: 92vh; grid-template-columns: minmax(210px, 36%) 1fr; overflow-y: auto; border: 1px solid var(--line); border-radius: 28px; background: var(--panel); box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55); }
 .book-modal-cover { display: grid; min-height: 460px; place-items: center; overflow: hidden; background: linear-gradient(145deg, #2b2e43, #111217); }
 .book-modal-cover img { object-fit: contain; padding: 32px; filter: drop-shadow(0 18px 24px rgba(0, 0, 0, 0.42)); }
@@ -285,6 +286,7 @@ legend span, .text-field span { margin-left: 6px; color: var(--muted); font-size
 .book-modal-eyebrow { color: #aebcff; font-size: 12px; font-weight: 800; letter-spacing: 0.05em; }
 .book-modal-body h2 { margin: 0; font-size: clamp(28px, 4vw, 42px); line-height: 1.15; letter-spacing: -0.045em; }
 .book-modal-author { color: var(--muted); font-size: 14px; }
+.book-modal .movie-detail-overview { display: -webkit-box; overflow: hidden; line-height: 1.65; -webkit-box-orient: vertical; -webkit-line-clamp: 7; }
 .book-modal-sources { color: var(--muted); font-size: 11px; }
 .book-detail-link { align-self: flex-start; padding: 12px 16px; border-radius: 12px; background: #879cff; color: #0d1020; font-size: 13px; font-weight: 850; text-decoration: none; }
 .movie-modal-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(0, 0, 0, 0.78); backdrop-filter: blur(8px); }
