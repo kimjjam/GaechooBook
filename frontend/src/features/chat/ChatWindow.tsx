@@ -15,6 +15,36 @@ interface ChatWindowProps {
   onMoviesRecommended?: (movies: MovieRecommendation[]) => void;
 }
 
+interface BookBasicProfile {
+  age_group: string;
+  gender: string;
+  mbti: string;
+}
+
+type BookFlowPhase = "loading" | "profile" | "confirm" | "taste" | "ready";
+
+const BOOK_PROFILE_STORAGE_KEY_PREFIX = "moodpick_book_basic_profile";
+
+const BOOK_PROFILE_QUESTIONS = [
+  {
+    prompt: "먼저 기본정보를 확인할게요. 어느 연령대인가요?",
+    options: ["초등학생", "중학생", "고등학생", "20대", "30대", "40대", "50대 이상"],
+  },
+  {
+    prompt: "성별도 선택해 주세요.",
+    options: ["여성", "남성", "논바이너리", "응답하지 않음"],
+  },
+  {
+    prompt: "마지막으로 MBTI를 알려주세요. 독서 취향을 넓히는 보조 신호로만 사용할게요.",
+    options: [
+      "ISTJ", "ISFJ", "INFJ", "INTJ",
+      "ISTP", "ISFP", "INFP", "INTP",
+      "ESTP", "ESFP", "ENFP", "ENTP",
+      "ESTJ", "ESFJ", "ENFJ", "ENTJ",
+    ],
+  },
+];
+
 const BOOK_TASTE_QUESTIONS = [
   {
     prompt: "책 취향부터 천천히 알아볼게요. 평소 어떤 종류의 책을 가장 자주 읽나요?",
@@ -28,24 +58,56 @@ const BOOK_TASTE_QUESTIONS = [
     prompt: "이번에는 어떤 느낌으로 읽고 싶나요?",
     options: ["가볍고 편하게", "깊이 생각하며", "빠르게 몰입해서", "따뜻하게 쉬면서"],
   },
-  {
-    prompt: "나이에 맞는 일반 도서만 추천할게요. 어느 연령대인가요?",
-    options: ["초등학생", "중학생", "고등학생", "20대", "30대", "40대", "50대 이상"],
-  },
-  {
-    prompt: "성별도 선택해 주세요. 추천을 고정관념으로 나누지 않고, 관련 주제를 직접 요청할 때만 참고할게요.",
-    options: ["여성", "남성", "논바이너리", "응답하지 않음"],
-  },
-  {
-    prompt: "마지막으로 추천에 살짝 참고할 MBTI도 알려주세요. 독서 취향을 넓히는 보조 신호로만 사용할게요.",
-    options: [
-      "ISTJ", "ISFJ", "INFJ", "INTJ",
-      "ISTP", "ISFP", "INFP", "INTP",
-      "ESTP", "ESFP", "ENFP", "ENTP",
-      "ESTJ", "ESFJ", "ENFJ", "ENTJ",
-    ],
-  },
 ];
+
+function getBookProfileStorageKey(sessionId: string) {
+  return `${BOOK_PROFILE_STORAGE_KEY_PREFIX}:${sessionId}`;
+}
+
+function isBookBasicProfile(value: unknown): value is BookBasicProfile {
+  if (!value || typeof value !== "object") return false;
+  const profile = value as Record<string, unknown>;
+  return typeof profile.age_group === "string"
+    && BOOK_PROFILE_QUESTIONS[0].options.includes(profile.age_group)
+    && typeof profile.gender === "string"
+    && BOOK_PROFILE_QUESTIONS[1].options.includes(profile.gender)
+    && typeof profile.mbti === "string"
+    && BOOK_PROFILE_QUESTIONS[2].options.includes(profile.mbti);
+}
+
+function getStoredBookProfile(sessionId: string): BookBasicProfile | null {
+  try {
+    const stored = localStorage.getItem(getBookProfileStorageKey(sessionId));
+    if (!stored) return null;
+    const parsed: unknown = JSON.parse(stored);
+    return isBookBasicProfile(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredBookProfile(sessionId: string, profile: BookBasicProfile) {
+  try {
+    localStorage.setItem(getBookProfileStorageKey(sessionId), JSON.stringify(profile));
+  } catch {
+    // 저장소를 사용할 수 없는 환경에서도 현재 대화의 추천은 계속 진행한다.
+  }
+}
+
+function removeStoredBookProfile(sessionId: string) {
+  try {
+    localStorage.removeItem(getBookProfileStorageKey(sessionId));
+  } catch {
+    // 저장소를 사용할 수 없는 환경에서는 현재 대화 상태만 초기화한다.
+  }
+}
+
+function describeBookProfile(profile: BookBasicProfile) {
+  if (profile.gender === "응답하지 않음") {
+    return `사용자분은 ${profile.age_group} ${profile.mbti}이며, 성별은 응답하지 않으셨습니다. 이대로 찾아드릴까요?`;
+  }
+  return `사용자분의 정보는 ${profile.age_group} ${profile.mbti} ${profile.gender}이십니다. 이대로 찾아드릴까요?`;
+}
 
 const MOVIE_SUGGESTIONS = [
   "오늘은 공포영화 추천해줘",
@@ -63,12 +125,15 @@ export function ChatWindow({
 }: ChatWindowProps) {
   const chatHistoryRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    const openingMessage = initialAssistantMessage
-      ?? (mode === "books" ? BOOK_TASTE_QUESTIONS[0].prompt : "");
+    const openingMessage = initialAssistantMessage ?? "";
     return openingMessage
       ? [{ id: "initial-assistant-message", role: "assistant", text: openingMessage }]
       : [];
   });
+  const [bookFlowPhase, setBookFlowPhase] = useState<BookFlowPhase>(mode === "books" ? "loading" : "ready");
+  const [bookProfileStep, setBookProfileStep] = useState(0);
+  const [bookProfileAnswers, setBookProfileAnswers] = useState<string[]>([]);
+  const [bookBasicProfile, setBookBasicProfile] = useState<BookBasicProfile | null>(null);
   const [bookTasteStep, setBookTasteStep] = useState(0);
   const [bookTasteAnswers, setBookTasteAnswers] = useState<string[]>([]);
   const [bookPreferences, setBookPreferences] = useState<BookPreferences | null>(null);
@@ -79,9 +144,27 @@ export function ChatWindow({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (mode !== "books" || !sessionId) return;
+
+    const storedProfile = getStoredBookProfile(sessionId);
+    setBookProfileStep(0);
+    setBookProfileAnswers([]);
+    setBookTasteStep(0);
+    setBookTasteAnswers([]);
+    setBookPreferences(null);
+    setBookBasicProfile(storedProfile);
+    setBookFlowPhase("taste");
+    setMessages([{
+      id: crypto.randomUUID(),
+      role: "assistant",
+      text: BOOK_TASTE_QUESTIONS[0].prompt,
+    }]);
+  }, [mode, sessionId]);
+
+  useEffect(() => {
     const history = chatHistoryRef.current;
     if (history) history.scrollTop = history.scrollHeight;
-  }, [messages, bookTasteStep, isLoading, error]);
+  }, [messages, bookFlowPhase, bookProfileStep, bookTasteStep, isLoading, error]);
 
   async function sendMessage(text: string) {
     if (!text || isLoading) return;
@@ -92,7 +175,83 @@ export function ChatWindow({
 
     let requestText = text;
     let nextBookPreferences: BookPreferences | null = null;
-    if (mode === "books" && bookTasteStep < BOOK_TASTE_QUESTIONS.length) {
+    if (mode === "books" && bookFlowPhase === "loading") return;
+
+    if (mode === "books" && bookFlowPhase === "confirm") {
+      const normalizedAnswer = text.replace(/\s/g, "");
+      if (["예", "네", "좋아요"].includes(normalizedAnswer) && bookBasicProfile) {
+        saveStoredBookProfile(sessionId, bookBasicProfile);
+        const [genre, topic, readingMood] = bookTasteAnswers;
+        nextBookPreferences = {
+          genre,
+          topic,
+          reading_mood: readingMood,
+          ...bookBasicProfile,
+        };
+        setBookPreferences(nextBookPreferences);
+        setBookFlowPhase("ready");
+        requestText = `책 추천: ${genre}, ${topic}`;
+      } else if (["아니오", "아니요", "아뇨"].includes(normalizedAnswer)) {
+        removeStoredBookProfile(sessionId);
+        setBookBasicProfile(null);
+        setBookProfileStep(0);
+        setBookProfileAnswers([]);
+        setBookFlowPhase("profile");
+        setMessages((previous) => [
+          ...previous,
+          userMessage,
+          { id: crypto.randomUUID(), role: "assistant", text: BOOK_PROFILE_QUESTIONS[0].prompt },
+        ]);
+        return;
+      } else {
+        setMessages((previous) => [
+          ...previous,
+          userMessage,
+          { id: crypto.randomUUID(), role: "assistant", text: "예 또는 아니오로 답해주세요." },
+        ]);
+        return;
+      }
+    }
+
+    if (mode === "books" && bookFlowPhase === "profile") {
+      const currentQuestion = BOOK_PROFILE_QUESTIONS[bookProfileStep];
+      const normalizedProfileAnswer = bookProfileStep === 2 ? text.toUpperCase() : text;
+      if (!currentQuestion.options.includes(normalizedProfileAnswer)) {
+        setMessages((previous) => [
+          ...previous,
+          userMessage,
+          { id: crypto.randomUUID(), role: "assistant", text: "아래 선택지 중 하나를 골라주세요." },
+        ]);
+        return;
+      }
+
+      const nextAnswers = [...bookProfileAnswers, normalizedProfileAnswer];
+      const nextStep = bookProfileStep + 1;
+      setBookProfileAnswers(nextAnswers);
+      setBookProfileStep(nextStep);
+
+      if (nextStep < BOOK_PROFILE_QUESTIONS.length) {
+        setMessages((previous) => [
+          ...previous,
+          userMessage,
+          { id: crypto.randomUUID(), role: "assistant", text: BOOK_PROFILE_QUESTIONS[nextStep].prompt },
+        ]);
+        return;
+      }
+
+      const [ageGroup, gender, mbti] = nextAnswers;
+      const nextProfile = { age_group: ageGroup, gender, mbti: mbti.toUpperCase() };
+      setBookBasicProfile(nextProfile);
+      setBookFlowPhase("confirm");
+      setMessages((previous) => [
+        ...previous,
+        userMessage,
+        { id: crypto.randomUUID(), role: "assistant", text: describeBookProfile(nextProfile) },
+      ]);
+      return;
+    }
+
+    if (mode === "books" && bookFlowPhase === "taste") {
       const nextAnswers = [...bookTasteAnswers, text];
       const nextStep = bookTasteStep + 1;
       setBookTasteAnswers(nextAnswers);
@@ -110,18 +269,20 @@ export function ChatWindow({
         ]);
         return;
       }
-      const [genre, topic, readingMood, ageGroup, gender, mbti] = nextAnswers;
-      nextBookPreferences = {
-        genre,
-        topic,
-        reading_mood: readingMood,
-        age_group: ageGroup,
-        gender,
-        mbti,
-      };
-      setBookPreferences(nextBookPreferences);
-      requestText = `책 추천: ${genre}, ${topic}`;
-    } else if (mode === "books" && !/(책|도서|소설|에세이|자기계발|인문학)/.test(text)) {
+      setBookFlowPhase(bookBasicProfile ? "confirm" : "profile");
+      setMessages((previous) => [
+        ...previous,
+        userMessage,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          text: bookBasicProfile
+            ? describeBookProfile(bookBasicProfile)
+            : BOOK_PROFILE_QUESTIONS[0].prompt,
+        },
+      ]);
+      return;
+    } else if (mode === "books" && !nextBookPreferences && !/(책|도서|소설|에세이|자기계발|인문학)/.test(text)) {
       requestText = `도서 추천: ${text}`;
     }
 
@@ -178,6 +339,14 @@ export function ChatWindow({
     await sendMessage(input.trim());
   }
 
+  const activeBookOptions = bookFlowPhase === "confirm"
+    ? ["예", "아니오"]
+    : bookFlowPhase === "profile"
+      ? BOOK_PROFILE_QUESTIONS[bookProfileStep]?.options ?? []
+      : bookFlowPhase === "taste"
+        ? BOOK_TASTE_QUESTIONS[bookTasteStep]?.options ?? []
+        : [];
+
   return (
     <div className="chat-window">
       <div ref={chatHistoryRef} className="chat-history" aria-live="polite">
@@ -215,9 +384,9 @@ export function ChatWindow({
             )}
           </div>
         ))}
-        {mode === "books" && bookTasteStep < BOOK_TASTE_QUESTIONS.length && !isLoading && (
+        {mode === "books" && activeBookOptions.length > 0 && !isLoading && (
           <div className="prompt-suggestions chat-quick-replies" aria-label="책 취향 빠른 답변">
-            {BOOK_TASTE_QUESTIONS[bookTasteStep].options.map((option) => (
+            {activeBookOptions.map((option) => (
               <button key={option} type="button" onClick={() => void sendMessage(option)}>
                 {option}
               </button>
@@ -263,7 +432,7 @@ export function ChatWindow({
         <button
           type="submit"
           className="chat-send-button"
-          disabled={isLoading || !input.trim()}
+          disabled={isLoading || bookFlowPhase === "loading" || !input.trim()}
           aria-label="메시지 보내기"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
