@@ -25,6 +25,7 @@ export interface BookRecommendation {
   link?: string | null;
   genre?: string | null;
   sources: string[];
+  recommendation_reason?: string | null;
 }
 
 export interface RecommendationContext {

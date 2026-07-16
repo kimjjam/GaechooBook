@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChatMovieCards } from "@/features/chat/ChatMovieCards";
 import { ChatBookCards } from "@/features/chat/ChatBookCards";
 import { sendChatMessage } from "@/lib/api/chatClient";
+import type { BookPreferences } from "@/lib/api/chatClient";
 import type { BookRecommendation, ChatMessage, MovieRecommendation } from "@/features/chat/types";
 
 interface ChatWindowProps {
@@ -24,11 +25,15 @@ const BOOK_TASTE_QUESTIONS = [
     options: ["마음의 위로", "새로운 지식", "관계와 사랑", "몰입과 재미"],
   },
   {
-    prompt: "마지막으로, 이번에는 어떤 느낌으로 읽고 싶나요?",
+    prompt: "이번에는 어떤 느낌으로 읽고 싶나요?",
     options: ["가볍고 편하게", "깊이 생각하며", "빠르게 몰입해서", "따뜻하게 쉬면서"],
   },
   {
-    prompt: "추천에 살짝 참고할 MBTI도 알려주세요. 성격을 단정하지 않고 독서 취향을 넓히는 보조 신호로만 사용할게요.",
+    prompt: "연령대에 맞지 않는 문제집이나 자습서는 빼드릴게요. 어느 연령대인가요?",
+    options: ["초등학생", "중학생", "고등학생", "20대", "30대", "40대", "50대 이상"],
+  },
+  {
+    prompt: "마지막으로 추천에 살짝 참고할 MBTI도 알려주세요. 독서 취향을 넓히는 보조 신호로만 사용할게요.",
     options: [
       "ISTJ", "ISFJ", "INFJ", "INTJ",
       "ISTP", "ISFP", "INFP", "INTP",
@@ -37,25 +42,6 @@ const BOOK_TASTE_QUESTIONS = [
     ],
   },
 ];
-
-const MBTI_BOOK_KEYWORDS: Record<string, string> = {
-  ISTJ: "현실적이고 체계적인 이야기",
-  ISFJ: "따뜻한 관계와 공감",
-  INFJ: "깊은 내면과 의미",
-  INTJ: "통찰과 전략적 사고",
-  ISTP: "실용적인 지식과 탐구",
-  ISFP: "감성적인 문장과 위로",
-  INFP: "상상력과 섬세한 감정",
-  INTP: "새로운 관점과 지적 탐구",
-  ESTP: "빠른 전개와 강한 몰입",
-  ESFP: "유쾌하고 생생한 이야기",
-  ENFP: "영감과 다채로운 가능성",
-  ENTP: "발상의 전환과 논쟁적인 주제",
-  ESTJ: "목표와 성장을 돕는 실용서",
-  ESFJ: "사람과 관계의 따뜻한 이야기",
-  ENFJ: "성장과 공감을 이끄는 이야기",
-  ENTJ: "리더십과 성취를 다루는 책",
-};
 
 const MOVIE_SUGGESTIONS = [
   "오늘은 공포영화 추천해줘",
@@ -81,6 +67,7 @@ export function ChatWindow({
   });
   const [bookTasteStep, setBookTasteStep] = useState(0);
   const [bookTasteAnswers, setBookTasteAnswers] = useState<string[]>([]);
+  const [bookPreferences, setBookPreferences] = useState<BookPreferences | null>(null);
   const [input, setInput] = useState("");
   const [recommendationContext, setRecommendationContext] = useState<Record<string, unknown> | null>(null);
   const [recommendedMovieIds, setRecommendedMovieIds] = useState<number[]>([]);
@@ -100,6 +87,7 @@ export function ChatWindow({
     setError(null);
 
     let requestText = text;
+    let nextBookPreferences: BookPreferences | null = null;
     if (mode === "books" && bookTasteStep < BOOK_TASTE_QUESTIONS.length) {
       const nextAnswers = [...bookTasteAnswers, text];
       const nextStep = bookTasteStep + 1;
@@ -118,8 +106,16 @@ export function ChatWindow({
         ]);
         return;
       }
-      const [genre, topic, readingMood, mbti] = nextAnswers;
-      requestText = `책 추천: ${genre}, ${topic}, ${readingMood}, ${MBTI_BOOK_KEYWORDS[mbti] || mbti}`;
+      const [genre, topic, readingMood, ageGroup, mbti] = nextAnswers;
+      nextBookPreferences = {
+        genre,
+        topic,
+        reading_mood: readingMood,
+        age_group: ageGroup,
+        mbti,
+      };
+      setBookPreferences(nextBookPreferences);
+      requestText = `책 추천: ${genre}, ${topic}`;
     } else if (mode === "books" && !/(책|도서|소설|에세이|자기계발|인문학)/.test(text)) {
       requestText = `도서 추천: ${text}`;
     }
@@ -135,6 +131,7 @@ export function ChatWindow({
         mode === "movies"
           ? [...new Set([...excludedMovieIds, ...recommendedMovieIds])].slice(-MAX_EXCLUDED_MOVIE_IDS)
           : [],
+        mode === "books" ? nextBookPreferences ?? bookPreferences : null,
       );
       const nextContext = response.data?.recommendation_context;
       if (mode === "movies" && nextContext && typeof nextContext === "object" && !Array.isArray(nextContext)) {

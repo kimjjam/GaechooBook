@@ -2,6 +2,7 @@
 2~5단계에서 core/scoring, nl2sql, visualize 파이프라인으로 교체된다.
 """
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -13,6 +14,7 @@ from app.core.recommendation_query import (
     parse_recommendation_query,
 )
 from app.core.scoring.recommendation import rank_movies
+from app.core.scoring.books import rank_books
 from app.core.security import session_cookie
 from app.db.models import User
 from app.db.oracle_client import OracleConnectionError
@@ -73,16 +75,65 @@ def _book_identity(book: dict) -> tuple[str, ...]:
     return ("title", title, author)
 
 
-def _search_recommended_books(book_query: str):
+def _preference_search_queries(preferences: dict[str, str]) -> list[str]:
+    genre = preferences.get("genre", "").replace("·", " ").strip()
+    topic = preferences.get("topic", "").strip()
+    topic_queries = {
+        "마음의 위로": "심리 위로 에세이",
+        "새로운 지식": f"{genre} 교양".strip(),
+        "관계와 사랑": "관계 사랑 심리",
+        "몰입과 재미": f"재미있는 {genre}".strip(),
+    }
+    return list(dict.fromkeys(query for query in (genre, topic_queries.get(topic, topic)) if len(query) >= 2))
+
+
+def _merge_book_candidates(results) -> list[dict]:
+    books: list[dict] = []
+    by_identity: dict[tuple[str, ...], dict] = {}
+    for result in results:
+        for book in result.books:
+            identity = _book_identity(book)
+            existing = by_identity.get(identity)
+            if existing is not None:
+                for source in book.get("sources", []):
+                    if source not in existing.get("sources", []):
+                        existing.setdefault("sources", []).append(source)
+                for field in ("description", "genre", "thumbnail_url", "publisher", "link"):
+                    if not existing.get(field) and book.get(field):
+                        existing[field] = book[field]
+                continue
+            candidate = dict(book)
+            by_identity[identity] = candidate
+            books.append(candidate)
+    return books
+
+
+def _search_recommended_books(
+    book_query: str,
+    book_preferences: dict[str, str] | None = None,
+):
     """취향 문장이 너무 구체적이면 첫 조건으로 한 번 완화해 5권을 채운다."""
-    results = [
-        search_books(
-            book_query,
-            size_per_provider=5,
-            limit=_BOOK_RECOMMENDATION_LIMIT,
-        )
-    ]
-    if len(results[0].books) < _BOOK_RECOMMENDATION_LIMIT and "," in book_query:
+    if book_preferences:
+        queries = _preference_search_queries(book_preferences) or [book_query]
+        with ThreadPoolExecutor(max_workers=min(2, len(queries))) as executor:
+            futures = [
+                executor.submit(search_books, query, 8, 24)
+                for query in queries[:2]
+            ]
+            results = [future.result() for future in futures]
+        candidates = _merge_book_candidates(results)
+        books = rank_books(candidates, book_preferences, limit=_BOOK_RECOMMENDATION_LIMIT)
+    else:
+        results = [
+            search_books(
+                book_query,
+                size_per_provider=5,
+                limit=_BOOK_RECOMMENDATION_LIMIT,
+            )
+        ]
+        books = []
+
+    if not book_preferences and len(results[0].books) < _BOOK_RECOMMENDATION_LIMIT and "," in book_query:
         fallback_query = book_query.split(",", 1)[0].strip()
         if len(fallback_query) >= 2:
             results.append(
@@ -93,19 +144,8 @@ def _search_recommended_books(book_query: str):
                 )
             )
 
-    books: list[dict] = []
-    seen: set[tuple[str, ...]] = set()
-    for result in results:
-        for book in result.books:
-            identity = _book_identity(book)
-            if identity in seen:
-                continue
-            seen.add(identity)
-            books.append(book)
-            if len(books) >= _BOOK_RECOMMENDATION_LIMIT:
-                break
-        if len(books) >= _BOOK_RECOMMENDATION_LIMIT:
-            break
+    if not book_preferences:
+        books = _merge_book_candidates(results)[:_BOOK_RECOMMENDATION_LIMIT]
 
     successful_providers = list(dict.fromkeys(
         provider for result in results for provider in result.successful_providers
@@ -126,20 +166,22 @@ def _handle_recommend(
     authenticated_user: User | None = None,
     recommendation_context: dict | None = None,
     exclude_movie_ids: list[int] | None = None,
+    book_preferences: dict[str, str] | None = None,
 ) -> ChatResponse:
     genre = _extract_genre_keyword(message)
-    wants_books = any(keyword in message for keyword in _BOOK_KEYWORDS)
+    wants_books = book_preferences is not None or any(keyword in message for keyword in _BOOK_KEYWORDS)
 
     try:
         if wants_books:
             book_query = _extract_book_query(message, genre)
-            books, successful_providers, failed_providers = _search_recommended_books(book_query)
+            books, successful_providers, failed_providers = _search_recommended_books(
+                book_query,
+                book_preferences,
+            )
             if not books:
-                failed = ", ".join(failed_providers)
-                detail = f" 응답하지 않은 제공자: {failed}." if failed else ""
                 return ChatResponse(
                     intent=Intent.RECOMMEND,
-                    reply=f"'{book_query}' 도서를 찾지 못했어요.{detail}",
+                    reply="조건에 맞는 책을 찾지 못했어요. 관심 주제를 조금 넓혀 다시 찾아볼까요?",
                     data={
                         "query": book_query,
                         "books": [],
@@ -236,8 +278,6 @@ def _handle_recommend(
 
     if wants_books:
         reply = f"취향을 반영해 책 {len(data['books'])}권을 골랐어요. 카드를 눌러 간단히 살펴보세요."
-        if data["failed_providers"]:
-            reply += f" 일부 제공자({', '.join(data['failed_providers'])})의 결과는 제외됐어요."
     else:
         reply = f"{data['applied_filters']} 조건과 저장된 취향을 함께 반영했어요. 카드를 누르면 상세 정보와 예고편을 볼 수 있어요."
         if data.get("learned_genre"):
@@ -316,5 +356,6 @@ def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
             authenticated_user,
             request.recommendation_context,
             request.exclude_movie_ids,
+            request.book_preferences.model_dump() if request.book_preferences else None,
         )
     return _HANDLERS[intent](request.message, request.session_id, authenticated_user)

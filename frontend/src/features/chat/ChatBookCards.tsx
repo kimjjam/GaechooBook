@@ -105,7 +105,7 @@ export function ChatBookCards({ books }: ChatBookCardsProps) {
             <span className="chat-book-copy">
               <strong>{book.title}</strong>
               <small>{book.author || "저자 미상"}</small>
-              <em>{[book.publisher, book.pub_year].filter(Boolean).join(" · ") || book.sources.join(" · ")}</em>
+              <em>{book.recommendation_reason || [book.publisher, book.pub_year].filter(Boolean).join(" · ") || book.sources.join(" · ")}</em>
               <span className="book-source-badge">출처 {book.sources.join(" · ")}</span>
             </span>
           </button>
